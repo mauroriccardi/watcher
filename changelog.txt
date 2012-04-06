@@ -1,0 +1,3 @@
+pre-2012-04-06
+As for now this is just a dumb server, answering at every GET req with the content of xboard generated serverMoves file
+
