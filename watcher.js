@@ -20,7 +20,7 @@
 
 var http = require('http');
 var fs = require('fs');
-var FTPClient = require('ftp');
+var FTPClient = require('./node-ftp');
 
 var hostname;
 var username;
@@ -61,7 +61,7 @@ try {
     throw e;
 }
 
-var optre = /([a-z_]+)\s*:\s*([\w:\\ .\-]+)/g;
+var optre = /([a-z_]+)\s*:\s*(\w[\w:\\ .\-]+)/g;
 var admittedtokens = ['username','password','movesfilename','remotefilename','hostname','delay'];
 var option;
 while(option = optre.exec(options)) {
