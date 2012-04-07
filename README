@@ -6,7 +6,8 @@ To use it to send your games live via ftp to a relay server, you must
     b) copy the 'watcher/' folder wherever you prefer
     c) either install node.js on your system, or copy the node executable into watcher's main folder
     d) either install node-ftp module for node.js on your node.js installation, or copy node-ftp source 
-       into a subfolder 'watcher/node-ftp/' of the program's main folder
+       into a subfolder 'watcher/node-ftp/' of the program's main folder:
+       you can obtain node-ftp from https://github.com/mscdex/node-ftp
     e) edit your watcher.ini file to reflect the details of your system. See below for details.
     f) issue command 'node watcher.js' from folder 'watcher/'
     g) start xboard with the option '-serverMoves=<filename>': don't forget to specify the same name with the correct path into 'watcher.ini' file

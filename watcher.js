@@ -288,35 +288,36 @@ function parse(buffer) {
     return res;
 };
 
-setInterval(function() {
-    var buf;
-    var len;
-    try {
-        len = fs.statSync(filename).size;
-        if(len>oldlen) {
-            oldlen = len;
-            buf = fs.readFileSync(filename,'utf8');
-            fs.writeFileSync(remotefilename,parse(buf));
-        }
-    } catch(e) {
-    }
-}, delay * 1000);
+// Use this to test locally
+// setInterval(function() {
+    // var buf;
+    // var len;
+    // try {
+        // len = fs.statSync(filename).size;
+        // if(len>oldlen) {
+            // oldlen = len;
+            // buf = fs.readFileSync(filename,'utf8');
+            // fs.writeFileSync(remotefilename,parse(buf));
+        // }
+    // } catch(e) {
+    // }
+// }, delay * 1000);
 
-// var conn = new FTPClient({host: hostname});
+var conn = new FTPClient({host: hostname});
 
-// conn.on('connect', function() {
-    // conn.auth(username,password,function(err) {
-        // if(err) throw err;
-        // setInterval(function() {
-            // var buf = fs.readFileSync(filename,'utf8');
-            // fs.writeFileSync('tmp.txt',parse(buf));
-            // var stream = fs.createReadStream('tmp.txt');
-            // stream.setEncoding('utf8');
-            // conn.put(stream,remotefilename,function(err) {
-                // if(err) throw err;
-            // });
-        // }, 1000*delay);
-    // })
-// });
+conn.on('connect', function() {
+    conn.auth(username,password,function(err) {
+        if(err) throw err;
+        setInterval(function() {
+            var buf = fs.readFileSync(filename,'utf8');
+            fs.writeFileSync('tmp.txt',parse(buf));
+            var stream = fs.createReadStream('tmp.txt');
+            stream.setEncoding('utf8');
+            conn.put(stream,remotefilename,function(err) {
+                if(err) throw err;
+            });
+        }, 1000*delay);
+    })
+});
 
-// conn.connect();
+conn.connect();
