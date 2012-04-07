@@ -1,3 +1,23 @@
+/*
+    Watcher, an program to convert to PGN on the fly a game played on xboard/winboard and send it via ftp
+    Copyright (C) 2012  Mauro Riccardi
+
+    This program is free software; you can redistribute it and/or
+    modify it under the terms of the GNU General Public License
+    as published by the Free Software Foundation; either version 2
+    of the License, or (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+*/
+
 var http = require('http');
 var fs = require('fs');
 var FTPClient = require('ftp');
@@ -21,6 +41,11 @@ var knightshifts = {file: [-32,-16,16,31], rank: [-4,-2,2,4]};
 
 var files = ['a','b','c','d','e','f','g','h'];
 
+console.log('Watcher version 0.1, Copyright (C) 2012 Mauro Riccardi');
+console.log('Watcher comes with ABSOLUTELY NO WARRANTY.');
+console.log('This is free software, and you are welcome');
+console.log('to redistribute it under certain conditions.\nSee file COPYING and/or license details in the source for details.');
+
 for(var rank = 1; rank<=8; rank++) {
     files.forEach(function(file) {
         square[file+rank] = i++;
@@ -29,8 +54,6 @@ for(var rank = 1; rank<=8; rank++) {
 
 var options;
 var parsedopts = {};
-
-console.log('parsing');
 
 try {
     options = fs.readFileSync('watcher.ini','utf8');
