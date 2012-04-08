@@ -18,6 +18,8 @@
 
 */
 
+var debug = false;
+
 var http = require('http');
 var fs = require('fs');
 var FTPClient = require('./node-ftp');
@@ -61,21 +63,27 @@ try {
     throw e;
 }
 
-var optre = /([a-z_]+)\s*:\s*(\w[\w:\\ .\-]+)/g;
+var optre = /([a-z_]+)\s*:\s*([\w\/\\][\w:\\ .\-]+)/g;
 var admittedtokens = ['username','password','movesfilename','remotefilename','hostname','delay'];
 var option;
 while(option = optre.exec(options)) {
     var str = option[1] || 'invalid';
-    if(str in admittedtokens)
+    var found = false;
+    
+    admittedtokens.forEach(function(token) {
+        if(str === token) found = true;
+    });
+    
+    if(found)
         parsedopts[str] = option[2] || '';
 }
 
-password = options.password || '';
-username = options.username || 'anonymous';
-filename = options.movesfilename || '';
-remotefilename = options.remotefilename || 'live.pgn';
-delay = options.delay || 1;
-hostname = options.hostname || '127.0.0.1';
+password = parsedopts.password || '';
+username = parsedopts.username || 'anonymous';
+filename = parsedopts.movesfilename || '';
+remotefilename = parsedopts.remotefilename || 'live.pgn';
+delay = parsedopts.delay || 1;
+hostname = parsedopts.hostname || '127.0.0.1';
 
 function strtime(time) {
     var s = time % 60;
@@ -289,35 +297,42 @@ function parse(buffer) {
 };
 
 // Use this to test locally
-// setInterval(function() {
-    // var buf;
-    // var len;
-    // try {
-        // len = fs.statSync(filename).size;
-        // if(len>oldlen) {
-            // oldlen = len;
-            // buf = fs.readFileSync(filename,'utf8');
-            // fs.writeFileSync(remotefilename,parse(buf));
-        // }
-    // } catch(e) {
-    // }
-// }, delay * 1000);
 
-var conn = new FTPClient({host: hostname});
-
-conn.on('connect', function() {
-    conn.auth(username,password,function(err) {
-        if(err) throw err;
-        setInterval(function() {
-            var buf = fs.readFileSync(filename,'utf8');
-            fs.writeFileSync('tmp.txt',parse(buf));
-            var stream = fs.createReadStream('tmp.txt');
-            stream.setEncoding('utf8');
-            conn.put(stream,remotefilename,function(err) {
-                if(err) throw err;
-            });
-        }, 1000*delay);
-    })
+process.argv.forEach(function(arg) {
+    if(/debug/.exec(arg)) debug = true;
 });
 
-conn.connect();
+if(debug) {
+    setInterval(function() {
+        var buf;
+        var len;
+        try {
+            len = fs.statSync(filename).size;
+            if(len>oldlen) {
+                oldlen = len;
+                buf = fs.readFileSync(filename,'utf8');
+                fs.writeFileSync(remotefilename,parse(buf));
+            }
+        } catch(e) {
+        }
+    }, delay * 1000);
+} else {
+    var conn = new FTPClient({host: hostname});
+
+    conn.on('connect', function() {
+        conn.auth(username,password,function(err) {
+            if(err) throw err;
+            setInterval(function() {
+                var buf = fs.readFileSync(filename,'utf8');
+                fs.writeFileSync('tmp.txt',parse(buf));
+                var stream = fs.createReadStream('tmp.txt');
+                stream.setEncoding('utf8');
+                conn.put(stream,remotefilename,function(err) {
+                    if(err) throw err;
+                });
+            }, 1000*delay);
+        })
+    });
+
+    conn.connect();
+};
