@@ -10,7 +10,12 @@ To use it to send your games live via ftp to a relay server, you must
        you can obtain node-ftp from https://github.com/mscdex/node-ftp
     e) edit your watcher.ini file to reflect the details of your system. See below for details.
     f) issue command 'node watcher.js' from folder 'watcher/'
-    g) start xboard with the option '-serverMoves=<filename>': don't forget to specify the same name with the correct path into 'watcher.ini' file
+    g) start xboard with the option '-serverMoves=<filename>': don't forget to specify the same name with
+       the correct path into 'watcher.ini' file
+
+Options:
+    currently if you launch the watcher with 'node watcher.js debug' no ftp connection is made, and instead
+    the pgn is output in a local file (specified by using 'remotefilename' config option detailed below).
 
 Configuration file 'watcher.ini':
     This file is a simple text file, with a fixed format: each line has to be
@@ -39,5 +44,10 @@ Configuration file 'watcher.ini':
         hostname            the hostname of the ftp server
         delay               the time interval (in msec) the program will wait before polling for new moves:
                             keep in mind that if the file hasn't changed, nothing will be sent via ftp
+
+IMPORTANT NOTICE:
+    Due to a bug in xboard/winboard, if the file passed as argument to -serverMoves already exists, the GUI
+    stalls on startup! To fix this it would be enough to wrap everything in a script (TODO)
+
 
 Mauro Riccardi
