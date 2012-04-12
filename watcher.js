@@ -325,13 +325,22 @@ if(debug) {
         conn.auth(username,password,function(err) {
             if(err) throw err;
             setInterval(function() {
-                var buf = fs.readFileSync(filename,'utf8');
-                fs.writeFileSync('tmp.txt',parse(buf));
-                var stream = fs.createReadStream('tmp.txt');
-                stream.setEncoding('utf8');
-                conn.put(stream,remotefilename,function(err) {
-                    if(err) throw err;
-                });
+                var len;
+                var buf;
+                try {
+                    len = fs.statSync(filename).size;
+                    if(len>oldlen) {
+                        oldlen = len;
+                        buf = fs.readFileSync(filename,'utf8');
+                        fs.writeFileSync('tmp.txt',parse(buf));
+                        var stream = fs.createReadStream('tmp.txt');
+                        stream.setEncoding('utf8');
+                        conn.put(stream,remotefilename,function(errftp) {
+                            if(errftp) throw errftp;
+                        });
+                    }
+                } catch(e) {
+                }
             }, 1000*delay);
         })
     });
