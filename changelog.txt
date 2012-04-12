@@ -1,3 +1,7 @@
 pre-2012-04-06
 As for now this is just a dumb server, answering at every GET req with the content of xboard generated serverMoves file
-
+2012-04-06
+This version of the program should be a daemon repeatedly checking (after some delay) the file xboard generates, then if it changed since last time, it parses the file, make it a PGN, and sends it via ftp to Luca's server
+2012-04-07
+Everything has been implemented in parser, even disambiguation of rare things like several like-coloured bishops, and such.
+Also reading options from .ini has been implemented.
