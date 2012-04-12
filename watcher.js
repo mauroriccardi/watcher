@@ -113,8 +113,10 @@ function parse(buffer) {
     var tomove = 0;
     var ply = 0;
     
-    player.white = r.exec(buffer)[1];
-    player.black = r.exec(buffer)[1];
+    m = r.exec(buffer);
+    player.white = (m!=null)?m[1]:'?';
+    m = r.exec(buffer);
+    player.black = (m!=null)?m[1]:'?';
     
     res += '[White "'+player.white+'"]\n[Black "'+player.black+'"]\n[Result "*"]\n\n';
     
