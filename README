@@ -19,7 +19,10 @@ To use it to send your games live via ftp to a relay server, you must
 
 Options:
     currently if you launch the watcher with 'node watcher.js debug' no ftp connection is made, and instead
-    the pgn is output in a local file (specified by using 'remotefilename' config option detailed below).
+    the pgn is output in a local file (specified by using 'remotefilename' config option detailed below);
+    if the watcher is launched with the command 'node watcher.js xboard', the moves will be taken from the 
+    .debug file dumped by xboard/winboard: the location of this file (with path) must be specified to the
+    program by using the option 'movesfilename' in the watcher.ini file (see below for details);
 
 Configuration file 'watcher.ini':
     This file is a simple text file, with a fixed format: each line has to be
@@ -43,15 +46,12 @@ Configuration file 'watcher.ini':
                             path of xboard executable, while the name of the file is passed by the user
                             to the GUI via argument of '-serverMoves' option: at the moment this option
                             is undocumented in xboard, but something might appear into xboard docs in the
-                            future)
+                            future); if cmdline option 'xboard' is used the moves will be obtained from 
+                            the xboard.debug or winboard.debug file instead
         remotefilename      the name of the file you want to write the pgn to, on the remote ftp server
         hostname            the hostname of the ftp server
         delay               the time interval (in msec) the program will wait before polling for new moves:
                             keep in mind that if the file hasn't changed, nothing will be sent via ftp
-
-IMPORTANT NOTICE:
-    Due to a bug in xboard/winboard, if the file passed as argument to -serverMoves already exists, the GUI
-    stalls on startup! To fix this it would be enough to wrap everything in a script (TODO)
 
 
 Mauro Riccardi

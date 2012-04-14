@@ -584,11 +584,14 @@ if(debug) {
                 var buf;
                 try {
                     len = fs.statSync(filename).size;
-                    if(len>oldlen) {
-                        console.log('.');
+                    if(len!=oldlen) {
+                        var tmpbuf;
+                        
                         oldlen = len;
                         buf = fs.readFileSync(filename,'utf8');
-                        fs.writeFileSync('tmp.txt',parser(buf));
+                        tmpbuf = parser(buf);
+                        fs.writeFileSync('tmp.txt',tmpbuf);
+                        console.log('.'+tmpbuf.length+'B sent');
                         var stream = fs.createReadStream('tmp.txt');
                         stream.setEncoding('utf8');
                         conn.put(stream,remotefilename,function(errftp) {
