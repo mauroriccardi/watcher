@@ -106,8 +106,9 @@ function parsexboard(buffer) {
                   '', '', '', '', '', '', '', '',
                   'R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R',
                 ];
-    var board = board0;
+    var board;
     var epsquare = null;
+    var lastwasengine = null;
     
     var r = /\n?(\d+)\s*(<|>)first\s*:([^\r\n]+)\r?\n/g; // 1: timestamp, 
                                                           // 2: direction (<=from eng|>=to eng), 
@@ -116,10 +117,13 @@ function parsexboard(buffer) {
     var m;
     var player = {};
     var n;
-    var res = "";
+    var res = '';
     var tomove = 0;
     var ply = 0;
     var timestamp;
+    
+    board = [];
+    for(var i=0;i<board0.length;i++) board[i] = board0[i];
     
     player.white = 'non saprei';
     player.black = 'mister x';
@@ -131,19 +135,30 @@ function parsexboard(buffer) {
         timestamp = m[1];
 
         if(m[2]==='<') { // engine is sending something: extract only the move, as engine authors take liberties with the protocol...
+            
             // match move in winboard format
             n = /move\s+([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[3]); // 1: from square (like d2), 
                                                                        // 2: to square (like d4), 
                                                                        // 3: promotion to what piece [qrnb] (only in case of promotion)
+            if(n) {
+                if(lastwasengine!=null && lastwasengine) continue;
+                lastwasengine = true;
+            }
         } else if(m[2]==='>') {
-            if(m[3].match(/new/)) {
-                board = board0;
+            if(m[3].match(/new/)) {                
+                if(ply>0) res += '\n\n*\n\n\n[White "'+player.white+'"]\n[Black "'+player.black+'"]\n[Result "*"]\n\n';
+                for(var i=0;i<board0.length;i++) board[i] = board0[i];
                 epsquare = null;
                 ply = 0;
                 tomove = 0;
+                lastwasengine = null;
                 continue;
             }
             n = /([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[3]);
+            if(n) {
+                if(lastwasengine!=null && !lastwasengine) continue;
+                lastwasengine = false;
+            }
         } else continue;
 
         if(!n) { // not a move
