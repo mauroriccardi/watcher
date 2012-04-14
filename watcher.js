@@ -109,7 +109,7 @@ function parsexboard(buffer) {
     var board = board0;
     var epsquare = null;
     
-    var r = /(\d+)\s*(<|>)(first)\s*:\s*(.+)(?:\r?\n)/g; // 1: timestamp, 
+    var r = /\n?(\d+)\s*(<|>)first\s*:([^\r\n]+)\r?\n/g; // 1: timestamp, 
                                                           // 2: direction (<=from eng|>=to eng), 
                                                           // 3: which engine, 
                                                           // 4: command passed to/from
@@ -132,18 +132,18 @@ function parsexboard(buffer) {
 
         if(m[2]==='<') { // engine is sending something: extract only the move, as engine authors take liberties with the protocol...
             // match move in winboard format
-            n = /move\s+([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]); // 1: from square (like d2), 
+            n = /move\s+([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[3]); // 1: from square (like d2), 
                                                                        // 2: to square (like d4), 
                                                                        // 3: promotion to what piece [qrnb] (only in case of promotion)
         } else if(m[2]==='>') {
-            if(m[4].match(/new/)) {
+            if(m[3].match(/new/)) {
                 board = board0;
                 epsquare = null;
                 ply = 0;
                 tomove = 0;
                 continue;
             }
-            n = /([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]);
+            n = /([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[3]);
         } else continue;
 
         if(!n) { // not a move
@@ -312,7 +312,7 @@ function parsexboard(buffer) {
     }
     
     res += '\n\n*\n\n';
-    
+
     return res;
 };
 
