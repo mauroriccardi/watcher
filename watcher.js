@@ -170,8 +170,8 @@ function parse(buffer) {
             else res += ' ';
             
             if(promotion) {
-                res += ton + '=' + n[3];
-                board[square[n[4]]] = upcase[n[3]];
+                res += ton + '=' + upcase[n[3]];
+                board[square[n[4]]] = board[square[n[4]]] = tomove==0?n[3]:upcase[n[3]];
             } else if(castle) {
                 res += ton[0]=='g'?'O-O':'O-O-O';
                 board[square[n[3]]] = null;
