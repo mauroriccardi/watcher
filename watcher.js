@@ -182,13 +182,20 @@ function parsexboard(buffer) {
                 res += ton + '=' + upcase[n[3]];
                 board[to] = tomove==0?n[3]:upcase[n[3]];
             } else if(castle) {
-                res += ton[0]=='g'?'O-O':'O-O-O';
-                board[square[n[3]]] = null;
-                board[square[n[4]]] = (tomove==0?'r':'R');
+                var ft = ton[1];
+                if(ton[0]=='g') {
+                    res += 'O-O';
+                    board[square['h'+ft]] = null;
+                    board[square['f'+ft]] = (tomove==0?'r':'R');
+                } else {
+                    res += 'O-O-O';
+                    board[square['a'+ft]] = null;
+                    board[square['d'+ft]] = (tomove==0?'r':'R');
+                }
             } else if(enpassant) {
                 res += fromn[0]+'x'+ton;
-                board[square[n[3]]] = null;
-                board[square[n[4]]] = '';
+                board[square[ton[0]+fromn[1]]] = null;
+                board[to] = '';
             } else {
                 var total = 0;
                 var same_file = 0;
