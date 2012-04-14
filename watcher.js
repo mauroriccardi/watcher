@@ -20,6 +20,8 @@
 
 var debug = false;
 
+var parser;
+
 var http = require('http');
 var fs = require('fs');
 var FTPClient = require('./node-ftp');
@@ -93,7 +95,229 @@ function strtime(time) {
     return(time+':'+(m<10?'0'+m:m)+':'+(s<10?'0'+s:s));
 }
 
-function parse(buffer) {
+function parsexboard(buffer) {
+    var board0 = [
+                  'r', 'n', 'b', 'q', 'k', 'b', 'n', 'r',
+                  '', '', '', '', '', '', '', '',
+                  null, null, null, null, null, null, null, null, 
+                  null, null, null, null, null, null, null, null, 
+                  null, null, null, null, null, null, null, null, 
+                  null, null, null, null, null, null, null, null, 
+                  '', '', '', '', '', '', '', '',
+                  'R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R',
+                ];
+    var board = board0;
+    var epsquare = null;
+    
+    var r = /(\d+)\s*(<|>)(first)\s*:\s*(.+)(?:\r?\n)/g; // 1: timestamp, 
+                                                          // 2: direction (<=from eng|>=to eng), 
+                                                          // 3: which engine, 
+                                                          // 4: command passed to/from
+    var m;
+    var player = {};
+    var n;
+    var res = "";
+    var tomove = 0;
+    var ply = 0;
+    var timestamp;
+    
+    player.white = 'non saprei';
+    player.black = 'mister x';
+    
+    res += '[White "'+player.white+'"]\n[Black "'+player.black+'"]\n[Result "*"]\n\n';
+
+    while( m = r.exec(buffer) ) {
+        
+        timestamp = m[1];
+
+        if(m[2]==='<') { // engine is sending something: extract only the move, as engine authors take liberties with the protocol...
+            // match move in winboard format
+            n = /move\s+([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]); // 1: from square (like d2), 
+                                                                       // 2: to square (like d4), 
+                                                                       // 3: promotion to what piece [qrnb] (only in case of promotion)
+        } else if(m[2]==='>') {
+            if(m[4].match(/new/)) {
+                board = board0;
+                epsquare = null;
+                ply = 0;
+                tomove = 0;
+                continue;
+            }
+            n = /([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]);
+        } else continue;
+
+        if(!n) { // not a move
+            continue;
+        } else {
+            var from = square[n[1]];
+            var fromn = n[1];
+            var to = square[n[2]];
+            var ton = n[2];
+            var piece = upcase[board[from]];
+            var casedpiece = board[from];
+            var promotion;
+            var enpassant = false;
+            var capture;
+            var castle = false;
+            var depth;
+            var score;
+            var time;
+
+            if(board[to]!=null) capture = true;
+            else capture = false;
+            
+            if(epsquare && ton === epsquare) enpassant = true;
+            else enpassant = false;
+
+            if(n[3]) promotion = true;
+            else promotion = false;
+            
+            if(ply%2==0) res += ' '+(ply/2+1)+'. ';
+            else res += ' ';
+            
+            if(piece=='K' && /e[18][gc][18]/.exec(fromn+ton)) castle = true;
+            else castle = false;
+            
+            if(promotion) {
+                res += ton + '=' + upcase[n[3]];
+                board[to] = tomove==0?n[3]:upcase[n[3]];
+            } else if(castle) {
+                res += ton[0]=='g'?'O-O':'O-O-O';
+                board[square[n[3]]] = null;
+                board[square[n[4]]] = (tomove==0?'r':'R');
+            } else if(enpassant) {
+                res += fromn[0]+'x'+ton;
+                board[square[n[3]]] = null;
+                board[square[n[4]]] = '';
+            } else {
+                var total = 0;
+                var same_file = 0;
+                var same_rank = 0;
+                
+                res += (piece=='' && capture)?fromn[0]:piece;
+                if(piece=='') {
+                    var fr = fromn[1];
+                    var tr = ton[1];
+                    if(fr=='2' && tr=='4') epsquare = ton[0]+'3';
+                    else if(fr=='7' && tr=='5') epsquare = ton[0]+'6';
+                    else epsquare = null;
+                } else if(piece=='N') {
+                    var to88 = to + (to & 56);
+                    knightjumps88.forEach(function(jump) {
+                        var dum = to88 + jump;
+                        
+                        if(dum>=0 && dum<128 && (dum & 0x88)==0) {
+                            if(board[((dum >> 1) & 56)+(dum & 7)] == casedpiece) {
+                                if((dum&7)==(from&7)) same_file++;
+                                if((dum>>4)&7==((from>>3)&7)) same_rank++;
+                                total++;
+                            }
+                        }
+                    });
+                }
+                if(piece=='R' || piece=='Q') {
+                    var to88 = to + (to & 56);
+                    var dum;
+                    
+                    for(x=to88+1; x<128 && !(x & 0x88); x++) {
+                        dum = board[((x >> 1) & 56)+(x & 7)];
+                        if(dum==casedpiece) {
+                            same_rank++;
+                            total++;
+                        }
+                        if(dum!=null) break;
+                    }
+                    for(x=to88-1; x>=0 && !(x & 0x88); x--) {
+                        dum = board[((x >> 1) & 56)+(x & 7)];
+                        if(dum==casedpiece) {
+                            same_rank++;
+                            total++;
+                        }
+                        if(dum!=null) break;
+                    }
+                    for(x=to88+16; x<128 && !(x & 0x88); x+=16) {
+                        dum = board[((x >> 1) & 56)+(x & 7)];
+                        if(dum==casedpiece) {
+                            same_file++;
+                            total++;
+                        }
+                        if(dum!=null) break;
+                    }
+                    for(x=to88-16; x>=0 && !(x & 0x88); x-=16) {
+                        dum = board[((x >> 1) & 56)+(x & 7)];
+                        if(dum==casedpiece) {
+                            same_file++;
+                            total++;
+                        }
+                        if(dum!=null) break;
+                    }                   
+                }
+                if(piece=='B' || piece=='Q') {
+                    var to88 = to + (to & 56);
+                    var dum;
+                    
+                    for(x=to88+17; x<128 && !(x & 0x88); x+=17) {
+                        dum = board[((x >> 1) & 56)+(x & 7)];
+                        if(dum==casedpiece) {
+                            if((dum & 7) == (from & 7)) same_file++;
+                            if(((dum>>4) & 7) == ((from>>3) & 7)) same_rank++;
+                            total++;
+                        }
+                        if(dum!=null) break;
+                    }
+                    for(x=to88-17; x>=0 && !(x & 0x88); x-=17) {
+                        dum = board[((x >> 1) & 56)+(x & 7)];
+                        if(dum==casedpiece) {
+                            if((dum & 7) == (from & 7)) same_file++;
+                            if(((dum>>4) & 7) == ((from>>3) & 7)) same_rank++;
+                            total++;
+                        }
+                        if(dum!=null) break;
+                    }
+                    for(x=to88+15; x<128 && !(x & 0x88); x+=15) {
+                        dum = board[((x >> 1) & 56)+(x & 7)];
+                        if(dum==casedpiece) {
+                            if((dum & 7) == (from & 7)) same_file++;
+                            if(((dum>>4) & 7) == ((from>>3) & 7)) same_rank++;
+                            total++;
+                        }
+                        if(dum!=null) break;
+                    }
+                    for(x=to88-15; x>=0 && !(x & 0x88); x-=15) {
+                        dum = board[((x >> 1) & 56)+(x & 7)];
+                        if(dum==casedpiece) {
+                            if((dum & 7) == (from & 7)) same_file++;
+                            if(((dum>>4) & 7) == ((from>>3) & 7)) same_rank++;
+                            total++;
+                        }
+                        if(dum!=null) break;
+                    }                   
+                }
+                if(total>1) {
+                    if(same_file<=1) res+=fromn[0];
+                    else if(same_rank<=1) res+=fromn[1];
+                    else res+=fromn;
+                }
+                res += (capture?'x'+ton:ton);
+            }
+            
+            //res += ' {[%emt '+strtime(time)+'] [%eval '+score+'] [%depth '+depth+'] }';
+            
+            board[from] = null;
+            board[to] = casedpiece;
+        }
+        
+        ply++;
+        tomove = 1-tomove;
+    }
+    
+    res += '\n\n*\n\n';
+    
+    return res;
+};
+
+
+function parseservermoves(buffer) {
     var board = [
                   'r', 'n', 'b', 'q', 'k', 'b', 'n', 'r',
                   '', '', '', '', '', '', '', '',
@@ -105,7 +329,7 @@ function parse(buffer) {
                   'R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R',
                 ];
 
-    var r = /([\w\d:\/+\-=\*]+);/g;
+    var r = /([\w\d:\/+\-=\*]*);/g;
     var m;
     var player = {};
     var n;
@@ -115,8 +339,14 @@ function parse(buffer) {
     
     m = r.exec(buffer);
     player.white = (m!=null)?m[1]:'?';
-    m = r.exec(buffer);
-    player.black = (m!=null)?m[1]:'?';
+    if(player.white==='') {
+        player.white = '?';
+        player.black = '?';
+    } else {
+        m = r.exec(buffer);
+        player.black = (m!=null)?m[1]:'?';
+        if(player.black==='') player.black = '?';
+    }
     
     res += '[White "'+player.white+'"]\n[Black "'+player.black+'"]\n[Result "*"]\n\n';
     
@@ -171,7 +401,7 @@ function parse(buffer) {
             
             if(promotion) {
                 res += ton + '=' + upcase[n[3]];
-                board[square[n[4]]] = board[square[n[4]]] = tomove==0?n[3]:upcase[n[3]];
+                board[square[n[4]]] = tomove==0?n[3]:upcase[n[3]];
             } else if(castle) {
                 res += ton[0]=='g'?'O-O':'O-O-O';
                 board[square[n[3]]] = null;
@@ -285,7 +515,7 @@ function parse(buffer) {
                 res += (capture?'x'+ton:ton);
             }
             
-            res += ' {[%emt '+strtime(time)+'] [%eval '+score+'] depth '+depth+' }';
+            res += ' {[%emt '+strtime(time)+'] [%eval '+score+'] [%depth '+depth+'] }';
             
             board[from] = null;
             board[to] = casedpiece;
@@ -295,13 +525,18 @@ function parse(buffer) {
         tomove = 1-tomove;
     }
     
+    res += '\n\n*\n\n';
+    
     return res;
 };
 
 // Use this to test locally
 
+parser = parseservermoves;
+
 process.argv.forEach(function(arg) {
     if(/debug/.exec(arg)) debug = true;
+    else if(/xboard/.exec(arg)) parser = parsexboard;
 });
 
 if(debug) {
@@ -311,9 +546,11 @@ if(debug) {
         try {
             len = fs.statSync(filename).size;
             if(len>oldlen) {
+                console.log('*');
                 oldlen = len;
                 buf = fs.readFileSync(filename,'utf8');
-                fs.writeFileSync(remotefilename,parse(buf));
+                
+                fs.writeFileSync(remotefilename,parser(buf));
             }
         } catch(e) {
         }
@@ -321,6 +558,17 @@ if(debug) {
 } else {
     var conn = new FTPClient({host: hostname});
 
+    process.on('exit',function() {
+        conn.end();
+        console.log('FTP connection to '+hostname+' closed');
+        process.exit();
+    });
+    
+    // process.on('SIGINT',function() {
+        // conn.end();
+        // console.log('FTP connection to '+hostname+' closed');
+    // });
+    
     conn.on('connect', function() {
         conn.auth(username,password,function(err) {
             if(err) throw err;
@@ -330,9 +578,10 @@ if(debug) {
                 try {
                     len = fs.statSync(filename).size;
                     if(len>oldlen) {
+                        console.log('.');
                         oldlen = len;
                         buf = fs.readFileSync(filename,'utf8');
-                        fs.writeFileSync('tmp.txt',parse(buf));
+                        fs.writeFileSync('tmp.txt',parser(buf));
                         var stream = fs.createReadStream('tmp.txt');
                         stream.setEncoding('utf8');
                         conn.put(stream,remotefilename,function(errftp) {
