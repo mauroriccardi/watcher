@@ -177,11 +177,11 @@ function parsexboard(buffer) {
             var depth;
             var score;
             var time;
-
+            
             if(board[to]!=null) capture = true;
             else capture = false;
             
-            if(epsquare && ton === epsquare) enpassant = true;
+            if(piece=='' && epsquare && ton === epsquare) enpassant = true;
             else enpassant = false;
 
             if(n[3]) promotion = true;
@@ -194,7 +194,7 @@ function parsexboard(buffer) {
             else castle = false;
             
             if(promotion) {
-                res += ton + '=' + upcase[n[3]];
+                res += (capture?fromn[0]:'') + ton + '=' + upcase[n[3]];
                 board[to] = tomove==0?n[3]:upcase[n[3]];
             } else if(castle) {
                 var ft = ton[1];
