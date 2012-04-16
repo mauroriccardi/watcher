@@ -36,8 +36,8 @@ Configuration file 'watcher.ini':
     
         ([a-z_]+)\s*:\s*([\w\/\\][\w:\\\/ .\-]+)
     
-    where you can see that there is an undetermined  number of spaces between the token and the column,
-    and between the column and the value.
+    where you can see that there is an undetermined  number of spaces between the token and the colon,
+    and between the colon and the value.
     Admissable tokens are at present (any other token will be ignored):
     
         username            the username of your ftp connection
