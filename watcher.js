@@ -244,6 +244,7 @@ function parsexboard(buffer) {
                 res.pending = false;
                 continue;
             }
+            if(m[3][0]=='s') continue;
             n = /([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]);
             if(n) {
                 if(lastwasengine!=null && !lastwasengine) continue;
@@ -490,6 +491,8 @@ function parseservermoves(buffer) {
             var depth = n[5];
             var score = n[6]/100;
             var time = n[7];
+            
+            
             
             if(board[to]!=null) capture = true;
             else capture = false;
