@@ -50,6 +50,23 @@ console.log('Watcher comes with ABSOLUTELY NO WARRANTY.');
 console.log('This is free software, and you are welcome');
 console.log('to redistribute it under certain conditions.\nSee file COPYING and/or license details in the source for details.');
 
+// function show_board(board) {
+    // var res = '';
+    // var d;
+    
+    // for(var j = 7; j>=0; j--) {
+        // for(var i = 0;i<8;i++) {
+            // if(board[i+8*j] == null) d = ' ';
+            // else if(board[i+8*j] == '') d = 'P';
+            // else d = board[i+8*j];
+            // res += d+' ';
+        // }
+        // res += '\n';
+    // }
+    
+    // return res;
+// }
+
 for(var rank = 1; rank<=8; rank++) {
     files.forEach(function(file) {
         square[file+rank] = i++;
@@ -65,6 +82,64 @@ try {
     throw e;
 }
 
+function Game(tags, moves) {
+    this.tags = tags || {};
+    this.moves = moves || '';
+};
+Game.prototype.toString =
+    function () {
+        var res = '';
+        
+        res += '[White "'+(this.tags.white || '?')+'"]\n[Black "'+(this.tags.black || '?')+'"]\n[Result "'+(this.tags.result || '*')+'"]\n\n';
+        res += this.moves;
+        res += '\n\n'+(this.tags.result || '*')+'\n\n';
+        
+        return res;
+    };
+Game.prototype.pushTag = 
+    function(key,value) {
+        this.tags[key] = value;
+    };
+Game.prototype.pullTag =
+    function(key) {
+        return this.tags.key;
+    };
+Game.prototype.refresh =
+    function(keeptags) {
+        if(!keeptags) this.tags = {};
+        else {
+            for(key in this.tags) {
+                if(key in keeptags) continue;
+                else delete this.tags[key];
+            }
+        }
+        this.moves = '';
+    };
+Game.prototype.firstis =
+    function(player) {
+        this.first = player;
+        if(this.tags.whitefirst) this.tags.white = player;
+        else if(this.tags.blackfirst) this.tags.black = player;
+    };
+Game.prototype.secondis =
+    function(player) {
+        this.second = player;
+        if(this.tags.whitefirst) this.tags.black = player;
+        else if(this.tags.blackfirst) this.tags.white = player;
+    };
+Game.prototype.firstiswhite =
+    function() {
+        if(this.first) this.tags.white = this.tags.white || this.first;
+        if(this.second) this.tags.black = this.tags.black || this.second;
+        this.tags.whitefirst = 1;
+    };
+Game.prototype.firstisblack =
+    function() {
+        if(this.first) this.tags.black = this.tags.black || this.first;
+        if(this.second) this.tags.white = this.tags.white || this.second;
+        this.tags.blackfirst = 1;
+    };    
+    
 var optre = /([a-z_]+)\s*:\s*([\w\/\\][\w:\\\/ .\-]+)/g;
 var admittedtokens = ['username','password','movesfilename','remotefilename','hostname','delay'];
 var option;
@@ -110,26 +185,22 @@ function parsexboard(buffer) {
     var epsquare = null;
     var lastwasengine = null;
     
-    var r = /\n?(\d+)\s*(<|>)first\s*:([^\r\n]+)\r?\n/g; // 1: timestamp, 
+    var r = /\n?(\d+)\s*(<|>)(first|second)\s*:([^\r\n]+)\r?\n/g; // 1: timestamp, 
                                                           // 2: direction (<=from eng|>=to eng), 
                                                           // 3: which engine, 
                                                           // 4: command passed to/from
     var m;
-    var player = {};
     var n;
-    var res = '';
     var tomove = 0;
     var ply = 0;
     var timestamp;
+    var res = {s: '', pending: true};
+    
+    var game = new Game();
     
     board = [];
     for(var i=0;i<board0.length;i++) board[i] = board0[i];
     
-    player.white = 'non saprei';
-    player.black = 'mister x';
-    
-    res += '[White "'+player.white+'"]\n[Black "'+player.black+'"]\n[Result "*"]\n\n';
-
     while( m = r.exec(buffer) ) {
         
         timestamp = m[1];
@@ -137,24 +208,43 @@ function parsexboard(buffer) {
         if(m[2]==='<') { // engine is sending something: extract only the move, as engine authors take liberties with the protocol...
             
             // match move in winboard format
-            n = /move\s+([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[3]); // 1: from square (like d2), 
+            n = /move\s+([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]); // 1: from square (like d2), 
                                                                        // 2: to square (like d4), 
                                                                        // 3: promotion to what piece [qrnb] (only in case of promotion)
             if(n) {
-                if(lastwasengine!=null && lastwasengine) continue;
+                if(m[3][0]=='s') continue;
+                if(lastwasengine!=null && lastwasengine) continue;  // engine has sent two moves in a row: skip this line
                 lastwasengine = true;
+                if(ply==0) game.firstiswhite();
+                else if(ply==1) game.firstisblack();
+            } else if(n = /myname=[^\w\d\r\n]([\w\d\-. ]+)/.exec(m[4])) {
+                if(m[3][0]=='f') game.firstis(n[1]);
+                else game.secondis(n[1]);
+                continue;
             }
         } else if(m[2]==='>') {
-            if(m[3].match(/new/)) {                
-                if(ply>0) res += '\n\n*\n\n\n[White "'+player.white+'"]\n[Black "'+player.black+'"]\n[Result "*"]\n\n';
+            var s;
+            
+            if(m[4].match(/new/)) {                
                 for(var i=0;i<board0.length;i++) board[i] = board0[i];
                 epsquare = null;
                 ply = 0;
                 tomove = 0;
                 lastwasengine = null;
+                if(ply>0 && res.pending) res.s = game.toString();
+                game.refresh({first: 1, second: 1});
+                continue;
+            } else if(s = /name\s+([\w\d\-. ]+)/.exec(m[4])) {
+                if(m[3][0]=='f') game.secondis(s[1]);
+                else game.firstis(s[1]);
+                continue;
+            } else if(s = /result\s+(1-0|0-1|1\/2-1\/2)/.exec(m[4])) {
+                game.tags.result = s[1];
+                res.s += game.toString();
+                res.pending = false;
                 continue;
             }
-            n = /([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[3]);
+            n = /([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]);
             if(n) {
                 if(lastwasengine!=null && !lastwasengine) continue;
                 lastwasengine = false;
@@ -186,29 +276,32 @@ function parsexboard(buffer) {
 
             if(n[3]) promotion = true;
             else promotion = false;
+
+            if(ply%2==0) game.moves += ' '+(ply/2+1)+'. ';
+            else game.moves += ' ';
             
-            if(ply%2==0) res += ' '+(ply/2+1)+'. ';
-            else res += ' ';
             
             if(piece=='K' && /e[18][gc][18]/.exec(fromn+ton)) castle = true;
             else castle = false;
             
             if(promotion) {
-                res += (capture?fromn[0]:'') + ton + '=' + upcase[n[3]];
-                board[to] = tomove==0?n[3]:upcase[n[3]];
+                game.moves += (capture?(fromn[0]+'x'):'') + ton + '=' + upcase[n[3]];
+                board[from] = null;
+                board[to] = tomove==1?n[3]:upcase[n[3]];
+                continue;
             } else if(castle) {
                 var ft = ton[1];
                 if(ton[0]=='g') {
-                    res += 'O-O';
+                    game.moves += 'O-O';
                     board[square['h'+ft]] = null;
                     board[square['f'+ft]] = (tomove==0?'r':'R');
                 } else {
-                    res += 'O-O-O';
+                    game.moves += 'O-O-O';
                     board[square['a'+ft]] = null;
                     board[square['d'+ft]] = (tomove==0?'r':'R');
                 }
             } else if(enpassant) {
-                res += fromn[0]+'x'+ton;
+                game.moves += fromn[0]+'x'+ton;
                 board[square[ton[0]+fromn[1]]] = null;
                 board[to] = '';
             } else {
@@ -216,7 +309,8 @@ function parsexboard(buffer) {
                 var same_file = 0;
                 var same_rank = 0;
                 
-                res += (piece=='' && capture)?fromn[0]:piece;
+                game.moves += (piece=='' && capture)?fromn[0]:piece;
+                
                 if(piece=='') {
                     var fr = fromn[1];
                     var tr = ton[1];
@@ -316,11 +410,12 @@ function parsexboard(buffer) {
                     }                   
                 }
                 if(total>1) {
-                    if(same_file<=1) res+=fromn[0];
-                    else if(same_rank<=1) res+=fromn[1];
-                    else res+=fromn;
+                    if(same_file<=1) game.moves += fromn[0];
+                    else if(same_rank<=1) game.moves += fromn[1];
+                    else game.moves += fromn;
+                    
                 }
-                res += (capture?'x'+ton:ton);
+                game.moves += (capture?'x'+ton:ton);
             }
             
             //res += ' {[%emt '+strtime(time)+'] [%eval '+score+'] [%depth '+depth+'] }';
@@ -333,9 +428,9 @@ function parsexboard(buffer) {
         tomove = 1-tomove;
     }
     
-    res += '\n\n*\n\n';
-
-    return res;
+    if(res.pending) res.s += game.toString();
+    
+    return res.s;
 };
 
 
@@ -575,6 +670,7 @@ if(debug) {
                 fs.writeFileSync(remotefilename,parser(buf));
             }
         } catch(e) {
+            console.log(e);
         }
     }, delay * 1000);
 } else {
