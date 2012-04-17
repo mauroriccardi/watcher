@@ -654,6 +654,7 @@ parser = parseservermoves;
 process.argv.forEach(function(arg) {
     if(/debug/.exec(arg)) debug = true;
     else if(/xboard/.exec(arg)) parser = parsexboard;
+    else if(/arena/.exec(arg)) parser = function(buffer) { return buffer; };
 });
 
 if(debug) {
