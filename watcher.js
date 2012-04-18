@@ -33,6 +33,7 @@ var filename;
 var remotefilename;
 var delay = 1;
 var oldlen = 0;
+var oldlenbuf = 0;
 
 var square = {};
 var i = 0;
@@ -185,7 +186,7 @@ function parsexboard(buffer) {
     var epsquare = null;
     var lastwasengine = null;
     
-    var r = /\n?(\d+)\s*(<|>)(first|second)\s*:([^\r\n]+)\r?\n/g; // 1: timestamp, 
+    var r = /\n?(\d+)\s*(<|>)(first|second)\s*:[ ]*([^\r\n]+)\r?\n/g; // 1: timestamp, 
                                                           // 2: direction (<=from eng|>=to eng), 
                                                           // 3: which engine, 
                                                           // 4: command passed to/from
@@ -204,6 +205,7 @@ function parsexboard(buffer) {
     while( m = r.exec(buffer) ) {
         
         timestamp = m[1];
+        //console.log('match: '+m[0]);
 
         if(m[2]==='<') { // engine is sending something: extract only the move, as engine authors take liberties with the protocol...
             
@@ -213,7 +215,12 @@ function parsexboard(buffer) {
                                                                        // 3: promotion to what piece [qrnb] (only in case of promotion)
             if(n) {
                 if(m[3][0]=='s') continue;
-                if(lastwasengine!=null && lastwasengine) continue;  // engine has sent two moves in a row: skip this line
+                if(lastwasengine!=null && lastwasengine) {
+                    // console.log('error, engine sent two moves in a row');
+                    // console.log(n);
+                    // console.log('**************');
+                    continue;  // engine has sent two moves in a row: skip this line
+                }
                 lastwasengine = true;
                 if(ply==0) game.firstiswhite();
                 else if(ply==1) game.firstisblack();
@@ -225,7 +232,8 @@ function parsexboard(buffer) {
         } else if(m[2]==='>') {
             var s;
             
-            if(m[4].match(/new/)) {                
+            if(m[4].match(/new/)) { 
+                if(m[3][0] == 's') continue;
                 for(var i=0;i<board0.length;i++) board[i] = board0[i];
                 epsquare = null;
                 ply = 0;
@@ -238,16 +246,26 @@ function parsexboard(buffer) {
                 if(m[3][0]=='f') game.secondis(s[1]);
                 else game.firstis(s[1]);
                 continue;
-            } else if(s = /result\s+(1-0|0-1|1\/2-1\/2)/.exec(m[4])) {
+            } else if(s = /result\s+(1-0|0-1|1\/2-1\/2|\*)/.exec(m[4])) {
+                if(m[3][0] == 's') continue;
                 game.tags.result = s[1];
                 res.s += game.toString();
                 res.pending = false;
                 continue;
             }
             if(m[3][0]=='s') continue;
-            n = /([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]);
+            n = /usermove\s+([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]);
             if(n) {
-                if(lastwasengine!=null && !lastwasengine) continue;
+                lastwasengine = true;
+                if(ply==0) game.firstiswhite();
+                else if(ply==1) game.firstisblack();
+            } else if(n = /([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4])) {
+                if(lastwasengine!=null && !lastwasengine) {
+                    // console.log('error, gui sent two moves in a row');
+                    // console.log(n);
+                    // console.log('**************');
+                    continue;
+                }
                 lastwasengine = false;
             }
         } else continue;
@@ -268,6 +286,9 @@ function parsexboard(buffer) {
             var depth;
             var score;
             var time;
+            
+            // console.log(show_board(board));
+            // console.log(n);
             
             if(board[to]!=null) capture = true;
             else capture = false;
@@ -706,12 +727,15 @@ if(debug) {
                         buf = fs.readFileSync(filename,'utf8');
                         tmpbuf = parser(buf);
                         fs.writeFileSync('tmp.txt',tmpbuf);
-                        console.log('.'+tmpbuf.length+'B sent');
-                        var stream = fs.createReadStream('tmp.txt');
-                        stream.setEncoding('utf8');
-                        conn.put(stream,remotefilename,function(errftp) {
-                            if(errftp) throw errftp;
-                        });
+                        if(tmpbuf.length!=oldlenbuf) {
+                            oldlenbuf = tmpbuf.length;
+                            console.log('.'+tmpbuf.length+'B sent');
+                            var stream = fs.createReadStream('tmp.txt');
+                            stream.setEncoding('utf8');
+                            conn.put(stream,remotefilename,function(errftp) {
+                                if(errftp) throw errftp;
+                            });
+                        }
                     }
                 } catch(e) {
                 }
