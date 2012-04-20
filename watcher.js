@@ -784,19 +784,32 @@ process.on('quit',function() {
             fs.writeFileSync('tmp.txt',res);
         } catch(e) {
             console.log(e);
-        }    
+        }
+        process.exit();
     } else if(conn) {
         console.log('\n');
         console.log(res);
         try {
             fs.writeFileSync('tmp.txt',res);
+            var stream_table = fs.createReadStream('tmp.txt');
+            stream_table.setEncoding('utf8');
+            conn.put(stream_table,'EventoT.txt',function(errftp) {
+                if(errftp) throw errftp;
+                var stream_pgn = fs.createReadStream('tmp.pgn');
+                stream_pgn.setEncoding('utf8');
+                conn.put(stream_pgn,'Evento.pgn',function(errftp1) {
+                    if(errftp1) throw errftp1;
+                    conn.end();    
+                });
+            });
         } catch(e) {
             console.log(e);
+            conn.end();
         }
-    } else console.log('FTP connection broken');
-    
-    process.exit();
-    
+    } else {
+        console.log('FTP connection broken');
+        process.exit();
+    }
 });
 
 if(debug) {
@@ -820,24 +833,14 @@ if(debug) {
     conn = new FTPClient({host: hostname});
 
     process.on('exit',function() {
-        try {
-            var stream = fs.createReadStream('tmp.txt');
-            stream.setEncoding('utf8');
-            conn.put(stream,'EventoT.txt',function(errftp) {
-                if(errftp) throw errftp;
-                
-                conn.on('end',function() {
-                    console.log('FTP connection to '+hostname+' closed');
-                    process.exit();
-                });
-                conn.end();
-            });
-        } catch(e) {
-            console.log(e);
-        }
-        
+        console.log('Stopping process');        
     });
-        
+    
+    conn.on('end',function() {
+        console.log('FTP connection to '+hostname+' closed');
+        process.exit();
+    });
+    
     conn.on('connect', function() {
         conn.auth(username,password,function(err) {
             if(err) throw err;
@@ -855,11 +858,11 @@ if(debug) {
                         fs.writeFileSync('tmp.pgn',tmpbuf);
                         if(tmpbuf.length!=oldlenbuf) {
                             oldlenbuf = tmpbuf.length;
-                            console.log('.'+tmpbuf.length+'B sent');
                             var stream = fs.createReadStream('tmp.pgn');
                             stream.setEncoding('utf8');
                             conn.put(stream,remotefilename,function(errftp) {
                                 if(errftp) throw errftp;
+                                console.log('.'+tmpbuf.length+'B sent');
                             });
                         }
                     }
