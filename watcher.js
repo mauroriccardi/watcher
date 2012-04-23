@@ -206,6 +206,7 @@ function parsexboard(buffer) {
     var tomove = 0;
     var ply = 0;
     var timestamp, elapsed_time;
+    var currentPV = {};//{first: {depth: 0, score: 0, pv: ''}, second: {depth: 0, score: 0, pv: ''}};
     var res = {s: '', list: {byplayer: {}, bycols: {}}, pending: true};
     
     var game = new Game();
@@ -242,13 +243,17 @@ function parsexboard(buffer) {
                 if(m[3][0]=='f') game.firstis(n[1]);
                 else game.secondis(n[1]);
                 continue;
+            } else if(n = /^[ ]*(\d+)[ ]+(-?\d+)[ ]+\d+[ ]+\d+[ ]+([^\r\n]+)/.exec(m[4])) {
+                currentPV[m[3]] = {depth: n[1], score: n[2]/100, pv: n[3]};
+                continue;
             }
         } else if(m[2]==='>') {
             var s;
             
             if(m[4].match(/new/)) { 
                 if(m[3][0] == 's') continue;
-                if(ply>0 && res.pending) {
+                if(ply>0 && res.pending) {  
+                    // this code is replicated from the response to a 'result' command: must wrap this up somehow
                     var player = game.tags.white;
                     if(player) {
                         res.list.byplayer[player] = res.list.byplayer[player] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
@@ -265,6 +270,7 @@ function parsexboard(buffer) {
                 };
                 res.pending = true;
                 game.refresh({first: 1, second: 1});
+                currentPV = {};
                 for(var i=0;i<board0.length;i++) board[i] = board0[i];
                 epsquare = null;
                 ply = 0;
@@ -277,6 +283,7 @@ function parsexboard(buffer) {
                 continue;
             } else if(s = /result\s+(1-0|0-1|1\/2-1\/2|\*)[ ]*({[\w\d \-._]*})/.exec(m[4])) {
                 if(m[3][0] == 's') continue;
+                // this code is replicated into the response to a 'new' command: must wrap this up somehow
                 game.tags.result = s[1];
                 game.tags.motivation = s[2] || '';
                 
@@ -296,6 +303,10 @@ function parsexboard(buffer) {
 
                     res.s += game.toString();
                     res.pending = false;
+                    
+                    //I'm commenting this out at the moment since it causes a (still) unclear server error
+                    //cumulative_results = res.list;
+                    //process.emit('gameover');
                 };
                 continue;
             }
@@ -332,6 +343,15 @@ function parsexboard(buffer) {
             var depth;
             var score;
             var time;
+            var dummyPV;
+            
+            if(tomove==0) { // white's turn
+                if(game.tags.whitefirst) dummyPV = currentPV.first || {};
+                else dummyPV = currentPV.second || {};
+            } else { // black's turn
+                if(game.tags.blackfirst) dummyPV = currentPV.first || {};
+                else dummyPV = currentPV.second || {};
+            }
             
             // console.log(show_board(board));
             // console.log(n);
@@ -487,6 +507,10 @@ function parsexboard(buffer) {
             }
             
             //res += ' {[%emt '+strtime(time)+'] [%eval '+score+'] [%depth '+depth+'] }';
+            if('score' in dummyPV || 'depth' in dummyPV)
+                game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' '+ (dummyPV.pv || '') + ' } ';
+            else if('pv' in dummyPV) game.moves += ' { ' + dummyPV.pv + ' } ';
+            currentPV = {};
             
             board[from] = null;
             board[to] = casedpiece;
@@ -494,6 +518,7 @@ function parsexboard(buffer) {
         
         ply++;
         tomove = 1-tomove;
+        
     }
     
     if(ply>0 && res.pending) res.s += game.toString();
@@ -731,7 +756,7 @@ process.argv.forEach(function(arg) {
     else if(/arena/.exec(arg)) parser = function(buffer) { return buffer; };
 });
 
-process.on('quit',function() {
+function fillResults() {  
     var res = (new Date()).toString() + '\n';
     var count = 0;
     var maxlen = 0;
@@ -753,7 +778,9 @@ process.on('quit',function() {
         var losses = cumulative_results.byplayer[player]['0-1'];
         var unfinished = cumulative_results.byplayer[player]['*'];
         var score = (2 * wins + draws)/2;
-        var total = wins + draws + losses + unfinished;
+        var total = wins + draws + losses;
+        
+        if(total==0) continue;
         
         res += (++count) + '\t' + player;
         for(var i = player.length; i<maxlen; i++) res += ' ';
@@ -762,7 +789,7 @@ process.on('quit',function() {
                + losses     + '\t'
                + unfinished + '\t'
                + score      + '\t'
-               + (((100*score)/total)/100) + '%\n';
+               + ((Math.round((10000*score)/total)/100)) + '%\n';
     }
     
     res += '\n';
@@ -777,6 +804,40 @@ process.on('quit',function() {
     
     res += '----------------------------------------------------------------------\n';
     
+    return(res);
+};
+
+process.on('gameover',function() {
+    var res = fillResults();
+    
+    if(debug) {
+        try {
+            fs.writeFileSync('tmp.txt',res);
+        } catch(e) {
+            console.log(e);
+        }
+    } else if(conn) {
+        try {
+            fs.writeFileSync('tmp.txt',res);
+            var stream = fs.createReadStream('tmp.txt');
+            stream.setEncoding('utf8');
+            conn.put(stream,'EventoT.txt',function(errftp) {
+                if(errftp) {
+                    console.log(errftp);
+                    //throw errftp;
+                } else console.log('_'+res.length+'B sent');
+            });
+        } catch(e) {
+            console.log(e);
+        }
+    } else {
+        console.log('FTP connection broken');
+        process.exit();
+    }
+});
+
+process.on('quit',function() {
+    var res = fillResults();
     if(debug) {
         console.log('\n');
         console.log(res);
@@ -794,11 +855,17 @@ process.on('quit',function() {
             var stream_table = fs.createReadStream('tmp.txt');
             stream_table.setEncoding('utf8');
             conn.put(stream_table,'EventoT.txt',function(errftp) {
-                if(errftp) throw errftp;
+                if(errftp) {
+                    console.log(errftp);
+                    //throw errftp;
+                }
                 var stream_pgn = fs.createReadStream('tmp.pgn');
                 stream_pgn.setEncoding('utf8');
                 conn.put(stream_pgn,'Evento.pgn',function(errftp1) {
-                    if(errftp1) throw errftp1;
+                    if(errftp1) {
+                        //throw errftp1;
+                        console.log(errftp1);
+                    }
                     conn.end();    
                 });
             });
@@ -861,8 +928,10 @@ if(debug) {
                             var stream = fs.createReadStream('tmp.pgn');
                             stream.setEncoding('utf8');
                             conn.put(stream,remotefilename,function(errftp) {
-                                if(errftp) throw errftp;
-                                console.log('.'+tmpbuf.length+'B sent');
+                                if(errftp) {
+                                    console.log(errftp);
+                                    //throw errftp;
+                                } else console.log('.'+tmpbuf.length+'B sent');
                             });
                         }
                     }
