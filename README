@@ -38,7 +38,7 @@ Configuration file 'watcher.ini':
     a letter, a digit, or an underscore.
     In case this helps you, the program matches each line using the following regular expression:
     
-        ([a-z_]+)\s*:\s*([\w\/\\][\w:\\\/ .\-]+)
+        ([a-z_]+)\s*:\s*([\w\/\\][\w:()\\\/ .\-]+)
     
     where you can see that there is an undetermined  number of spaces between the token and the colon,
     and between the colon and the value.
