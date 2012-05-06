@@ -25,6 +25,8 @@ Options:
     program by using the option 'movesfilename' in the watcher.ini file (see below for details);
     if option 'arena' will be specified instead, the file specified in 'movesfilename' won't be parsed, and
     will be considered a PGN file to be sent directly over to the ftp site WITHOUT ANY PROCESSING;
+    you can also add option 'crosstable' to generate a crosstable of the games played (beware: it turns out
+    quite ugly in case of gauntlets or similar tournaments);
 
 Configuration file 'watcher.ini':
     This file is a simple text file, with a fixed format: each line has to be

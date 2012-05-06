@@ -32,6 +32,7 @@ var username;
 var password;
 var filename;
 var remotefilename;
+var crosstable = false;
 var delay = 1;
 var oldlen = 0;
 var oldlenbuf = 0;
@@ -182,6 +183,10 @@ function strtime(time) {
     return(time+':'+(m<10?'0'+m:m)+':'+(s<10?'0'+s:s));
 }
 
+function percentage(part,total) {
+    return ((Math.round((10000*part)/total)/100));
+}
+
 function parsexboard(buffer) {
     var board0 = [
                   'r', 'n', 'b', 'q', 'k', 'b', 'n', 'r',
@@ -206,8 +211,9 @@ function parsexboard(buffer) {
     var tomove = 0;
     var ply = 0;
     var timestamp, elapsed_time;
-    var currentPV = {};//{first: {depth: 0, score: 0, pv: ''}, second: {depth: 0, score: 0, pv: ''}};
-    var res = {s: '', list: {byplayer: {}, bycols: {}}, pending: true};
+    var currentPV = {};
+    /* {first: {depth: 0, score: 0, pv: ''}, second: {depth: 0, score: 0, pv: ''}}; */
+    var res = {s: '', list: {byplayer: {}, bycols: {}, crosstable: {}}, pending: true};
     
     var game = new Game();
     
@@ -254,18 +260,26 @@ function parsexboard(buffer) {
                 if(m[3][0] == 's') continue;
                 if(ply>0 && res.pending) {  
                     // this code is replicated from the response to a 'result' command: must wrap this up somehow
-                    var player = game.tags.white;
-                    if(player) {
-                        res.list.byplayer[player] = res.list.byplayer[player] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
-                        res.list.byplayer[player][game.tags.result]++;
+                    var player_white = game.tags.white;
+                    if(player_white) {
+                        res.list.byplayer[player_white] = res.list.byplayer[player_white] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
+                        res.list.byplayer[player_white][game.tags.result]++;
                     }
-                    player = game.tags.black
-                    if(player) {
-                        res.list.byplayer[player] = res.list.byplayer[player] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
-                        res.list.byplayer[player][invert_result[game.tags.result]]++;
+                    var player_black = game.tags.black
+                    if(player_black) {
+                        res.list.byplayer[player_black] = res.list.byplayer[player_black] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
+                        res.list.byplayer[player_black][invert_result[game.tags.result]]++;
                     }
                     if(game.tags.result in res.list.bycols) res.list.bycols[game.tags.result]++;
                     else res.list.bycols[game.tags.result] = 1;
+                    player_white = player_white || '?';
+                    player_black = player_black || '?';
+                    
+                    if(!(player_white in res.list.crosstable)) res.list.crosstable[player_white] = [];
+                    if(!(player_black in res.list.crosstable)) res.list.crosstable[player_black] = [];
+                    res.list.crosstable[player_white].push([{colour: 'white', opponent: player_black, result: game.tags.result}]);
+                    res.list.crosstable[player_black].push([{colour: 'black', opponent: player_white, result: invert_result[game.tags.result]}]);
+                    
                     res.s += game.toString();
                 };
                 res.pending = true;
@@ -288,18 +302,24 @@ function parsexboard(buffer) {
                 game.tags.motivation = s[2] || '';
                 
                 if(ply>0 && res.pending) {
-                    var player = game.tags.white;
-                    if(player) {
-                        res.list.byplayer[player] = res.list.byplayer[player] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
-                        res.list.byplayer[player][game.tags.result]++;
+                    var player_white = game.tags.white;
+                    if(player_white) {
+                        res.list.byplayer[player_white] = res.list.byplayer[player_white] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
+                        res.list.byplayer[player_white][game.tags.result]++;
                     }
-                    player = game.tags.black
-                    if(player) {
-                        res.list.byplayer[player] = res.list.byplayer[player] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
-                        res.list.byplayer[player][invert_result[game.tags.result]]++;
+                    var player_black = game.tags.black
+                    if(player_black) {
+                        res.list.byplayer[player_black] = res.list.byplayer[player_black] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
+                        res.list.byplayer[player_black][invert_result[game.tags.result]]++;
                     }
                     if(game.tags.result in res.list.bycols) res.list.bycols[game.tags.result]++;
                     else res.list.bycols[game.tags.result] = 1;
+                    player_white = player_white || '?';
+                    player_black = player_black || '?';
+                    if(!(player_white in res.list.crosstable)) res.list.crosstable[player_white] = [];
+                    if(!(player_black in res.list.crosstable)) res.list.crosstable[player_black] = [];
+                    res.list.crosstable[player_white].push([{colour: 'white', opponent: player_black, result: game.tags.result}]);
+                    res.list.crosstable[player_black].push([{colour: 'black', opponent: player_white, result: invert_result[game.tags.result]}]);
 
                     res.s += game.toString();
                     res.pending = false;
@@ -508,6 +528,8 @@ function parsexboard(buffer) {
             
             //res += ' {[%emt '+strtime(time)+'] [%eval '+score+'] [%depth '+depth+'] }';
             if('score' in dummyPV || 'depth' in dummyPV)
+                // this way recent versions of pgn4web can treat PV as if it was a variation instead of a comment
+                //game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + '} ('+ (dummyPV.pv || '') + ' ) ';  
                 game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' '+ (dummyPV.pv || '') + ' } ';
             else if('pv' in dummyPV) game.moves += ' { ' + dummyPV.pv + ' } ';
             currentPV = {};
@@ -754,18 +776,20 @@ process.argv.forEach(function(arg) {
     if(/debug/.exec(arg)) debug = true;
     else if(/xboard/.exec(arg)) parser = parsexboard;
     else if(/arena/.exec(arg)) parser = function(buffer) { return buffer; };
+    else if(/crosstable/.exec(arg)) crosstable = true;
 });
 
 function fillResults() {  
     var res = (new Date()).toString() + '\n';
     var count = 0;
     var maxlen = 0;
+    var wins, draws, losses, unfinished;
     
     for(var player in cumulative_results.byplayer) {
         if(player.length>maxlen) maxlen = player.length;
     }
     
-    maxlen += 4;
+    maxlen += 6;
     
     res += 'No.\tName';
     for(var i = 4; i<maxlen; i++) res += ' ';
@@ -773,10 +797,10 @@ function fillResults() {
     res += '----------------------------------------------------------------------\n'
     
     for(var player in cumulative_results.byplayer) {
-        var wins = cumulative_results.byplayer[player]['1-0'];
-        var draws = cumulative_results.byplayer[player]['1/2-1/2'];
-        var losses = cumulative_results.byplayer[player]['0-1'];
-        var unfinished = cumulative_results.byplayer[player]['*'];
+        wins = cumulative_results.byplayer[player]['1-0'];
+        draws = cumulative_results.byplayer[player]['1/2-1/2'];
+        losses = cumulative_results.byplayer[player]['0-1'];
+        unfinished = cumulative_results.byplayer[player]['*'];
         var score = (2 * wins + draws)/2;
         var total = wins + draws + losses;
         
@@ -789,21 +813,67 @@ function fillResults() {
                + losses     + '\t'
                + unfinished + '\t'
                + score      + '\t'
-               + ((Math.round((10000*score)/total)/100)) + '%\n';
+               + percentage(score,total) + '%\n';
     }
     
     res += '\n';
-    res += 'Total Games:\t' + ((cumulative_results.bycols['1-0'] || 0)
-                            + (cumulative_results.bycols['1/2-1/2'] || 0)
-                            + (cumulative_results.bycols['0-1'] || 0)
-                            + (cumulative_results.bycols['*'] || 0)) + '\n';
-    res += 'White Wins: \t' + (cumulative_results.bycols['1-0'] || 0) + '\n';
-    res += 'Black Wins: \t' + (cumulative_results.bycols['0-1'] || 0) + '\n';
-    res += 'Draws:      \t' + (cumulative_results.bycols['1/2-1/2'] || 0) + '\n';
-    res += 'Unfinished: \t' + (cumulative_results.bycols['*'] || 0) + '\n';
+    
+    wins = (cumulative_results.bycols['1-0'] || 0);
+    losses = (cumulative_results.bycols['0-1'] || 0);
+    draws = (cumulative_results.bycols['1/2-1/2'] || 0);
+    unfinished = (cumulative_results.bycols['*'] || 0);
+    
+    res += 'Total Games:\t' + (wins + losses + draws + unfinished) + '\n';
+    res += 'White Wins: \t' + wins + ' (' + percentage(wins,wins+losses+draws+unfinished) + '%)\n';
+    res += 'Black Wins: \t' + losses + ' (' + percentage(losses,wins+losses+draws+unfinished) + '%)\n';
+    res += 'Draws:      \t' + draws + ' (' + percentage(draws,wins+losses+draws+unfinished) + '%)\n';
+    res += 'Unfinished: \t' + unfinished + ' (' + percentage(unfinished,wins+losses+draws+unfinished) + '%)\n';
     
     res += '----------------------------------------------------------------------\n';
     
+    if(crosstable) {
+        res += '\n\n';
+        var count = 1;
+        var players = {};
+        for(var p in cumulative_results.crosstable) {
+            players[p] = count++;
+        }
+        
+        for(var player1 in cumulative_results.crosstable) {
+            res += '----------------------------------------------------------------------\n';
+            var l = maxlen + 1;
+            var head = (players[player1]<10?' ':'')+players[player1] + ': ';
+            res += head + player1;
+            
+            for(var i = player1.length + head.length ; i<maxlen; i++) res += ' ';
+            res += '|';
+            for(var row in cumulative_results.crosstable[player1]) {
+                cumulative_results.crosstable[player1][row]
+                    .forEach(function(rec) {                
+                        if(rec.opponent in cumulative_results.crosstable) {
+                            var g = rec.result;
+                            var opp = players[rec.opponent];
+                            opp = (opp<10?' ':'')+opp;
+                            //if(g[0] == '*') return;
+                            res += opp+rec.colour[0];
+                            if(g == '1-0') res += '+ ';
+                            else if(g == '0-1') res += '- ';
+                            else if(g == '1/2-1/2') res += '= ';
+                            else res += '* ';
+                            l += opp.length + 3;
+                            if(l>=65) {
+                                res += '\n';
+                                l = maxlen+1;
+                                for(var i = 0; i<maxlen; i++) res += ' ';
+                                res += '|';
+                            }
+                        }
+                    });
+            }
+            res += '\n';
+        }
+        res += '----------------------------------------------------------------------\n';
+    }
     return(res);
 };
 
