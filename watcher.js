@@ -187,6 +187,29 @@ function percentage(part,total) {
     return ((Math.round((10000*part)/total)/100));
 }
 
+function gather(tags,list) {
+    var player_white = tags.white;
+    
+    if(player_white) {
+        list.byplayer[player_white] = list.byplayer[player_white] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
+        list.byplayer[player_white][tags.result]++;
+    }
+    var player_black = tags.black
+    if(player_black) {
+        list.byplayer[player_black] = list.byplayer[player_black] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
+        list.byplayer[player_black][invert_result[tags.result]]++;
+    }
+    if(tags.result in list.bycols) list.bycols[tags.result]++;
+    else list.bycols[tags.result] = 1;
+    player_white = player_white || '?';
+    player_black = player_black || '?';
+    
+    if(!(player_white in list.crosstable)) list.crosstable[player_white] = [];
+    if(!(player_black in list.crosstable)) list.crosstable[player_black] = [];
+    list.crosstable[player_white].push([{colour: 'white', opponent: player_black, result: tags.result}]);
+    list.crosstable[player_black].push([{colour: 'black', opponent: player_white, result: invert_result[tags.result]}]);
+}
+
 function parsexboard(buffer) {
     var board0 = [
                   'r', 'n', 'b', 'q', 'k', 'b', 'n', 'r',
@@ -550,6 +573,29 @@ function parsexboard(buffer) {
     return res.s;
 };
 
+function parsearena(buffer) {
+    // parse relevant pgn tags, no other parsing is needed
+    // this function must only extract game informations to make the crosstable, standing table, etc.
+    
+    var tagre = /\[\s*(\w+)\s*"([^\r\n]+)"\]/g;
+    var reslist = { byplayer: {}, bycols: {}, crosstable: {} };
+    var tags = { white: undefined, black: undefined, result: undefined };
+    
+    while(m = tagre.exec(buffer) ) {
+        if(m[1] == 'White') {
+            tags.white = m[2];
+        } else if(m[1] == 'Black') {
+            tags.black = m[2];
+        } else if(m[1] == 'Result') {
+            tags.result = m[2];
+            gather(tags,reslist);
+        }
+    }
+    
+    cumulative_results = reslist;
+
+    return buffer;
+}
 
 function parseservermoves(buffer) {
     var board = [
@@ -775,7 +821,7 @@ parser = parseservermoves;
 process.argv.forEach(function(arg) {
     if(/debug/.exec(arg)) debug = true;
     else if(/xboard/.exec(arg)) parser = parsexboard;
-    else if(/arena/.exec(arg)) parser = function(buffer) { return buffer; };
+    else if(/arena/.exec(arg)) parser = parsearena;//function(buffer) { return buffer; };
     else if(/crosstable/.exec(arg)) crosstable = true;
 });
 
@@ -784,7 +830,7 @@ function fillResults() {
     var count = 0;
     var maxlen = 0;
     var wins, draws, losses, unfinished;
-    
+
     for(var player in cumulative_results.byplayer) {
         if(player.length>maxlen) maxlen = player.length;
     }
