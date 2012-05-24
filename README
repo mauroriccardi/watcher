@@ -16,6 +16,14 @@ To use it to send your games live via ftp to a relay server, you must
     f) issue command 'node watcher.js' from folder 'watcher/'
     g) start xboard with the option '-serverMoves=<filename>': don't forget to specify the same name with
        the correct path into 'watcher.ini' file
+    h) watcher does its best to try to infer players names, but engine must take measures for this to work
+       reliably, due to particularities of xboard protocol; if engine uses feature 'myname=<engine name>'
+       then everything should work fine in ICS mode, if both engines do the same it will work also in 
+       engine-engine local mode, to make it work in local human-engine games engine should use also feature
+       'name=1'; the default in this case is for winboard to grab the name from the OS: if that's not desirable
+       (e.g. when the computer belongs to the operator, or to the organisation of a match, or the player is
+       not the owner of the account) then you should start xboard/winboard with the option '-userName="<user name>"'
+       as well as '-debug'
 
 Options:
     currently if you launch the watcher with 'node watcher.js debug' no ftp connection is made, and instead
