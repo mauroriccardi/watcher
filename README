@@ -15,7 +15,8 @@ To use it to send your games live via ftp to a relay server, you must
     e) edit your watcher.ini file to reflect the details of your system. See below for details.
     f) issue command 'node watcher.js' from folder 'watcher/'
     g) start xboard with the option '-serverMoves=<filename>': don't forget to specify the same name with
-       the correct path into 'watcher.ini' file
+       the correct path into 'watcher.ini' file [this options is currently deprecated, and is not going to
+       be supported any longer: use xboard (currently the default) or arena instead]
     h) watcher does its best to try to infer players names, but engine must take measures for this to work
        reliably, due to particularities of xboard protocol; if engine uses feature 'myname=<engine name>'
        then everything should work fine in ICS mode, if both engines do the same it will work also in 

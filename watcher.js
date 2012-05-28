@@ -26,6 +26,8 @@ var http = require('http');
 var fs = require('fs');
 var FTPClient = require('./node-ftp');
 var tty = require('tty');
+var util = require('util');
+var Stream = require('stream').Stream;
 
 var hostname;
 var username;
@@ -38,11 +40,15 @@ var oldlen = 0;
 var oldlenbuf = 0;
 
 var cumulative_results = {};
+var cumulative_games = [];
+var cumulative_pending = true;
 
 var square = {};
+var squaremap = [];
 var i = 0;
 
 var upcase = {'q': 'Q', 'n': 'N', 'r': 'R', 'b': 'B', '': '', 'k': 'K', 'Q': 'Q', 'N': 'N', 'R': 'R', 'B': 'B', 'K': 'K'};
+var invertcase = {'q': 'Q', 'n': 'N', 'r': 'R', 'b': 'B', '': '', 'k': 'K', 'Q': 'q', 'N': 'n', 'R': 'r', 'B': 'b', 'K': 'k'};
 var invert_result = {'1-0': '0-1', '1/2-1/2': '1/2-1/2', '0-1': '1-0', '*': '*'};
 
 var knightjumps = [10,-6,6,-10,17,-15,15,-17];
@@ -78,6 +84,10 @@ for(var rank = 1; rank<=8; rank++) {
         square[file+rank] = i++;
     });
 };
+
+for(var i = 0, rank = 7; rank >= 0; rank--)
+    for(var file = 0; file < 8; file++)
+        squaremap[i++] = file+8*rank;
 
 function pgn_date(date) {
     return date.getUTCFullYear()+'.'+(date.getUTCMonth()+1)+'.'+date.getUTCDate();
@@ -144,6 +154,57 @@ Game.prototype.firstisblack =
         this.tags.blackfirst = 1;
     };    
     
+function ConvertToStream(source, parser) {  
+
+// Note: source and parser can be pretty anything, 
+// insofar as parser(source) is a string (or something
+// that fits into new Buffer())
+
+    Stream.call(this);
+    
+    parser = parser || (function(data) { return data; });
+    
+    var that = this;
+    
+    this.readable = true;
+    this.encoding = null;
+    this._wait = false;
+    this._buf = new Buffer(parser(source));
+    
+    process.nextTick(function() {
+        if(that.readable) {
+            if(!that._wait && that.readable && that._buf) {
+                if(that.encoding) that.emit('data', that._buf.toString(that.encoding));
+                else that.emit('data', that._buf);
+                that.emit('end');
+            } else process.nextTick(arguments.callee);
+        }
+    });
+    
+};
+
+util.inherits(ConvertToStream, Stream);
+
+ConvertToStream.prototype.setEncoding = function(enc) {
+    this.encoding = enc;
+};
+
+ConvertToStream.prototype.pause = function() {
+    this._wait = true;
+    this.emit('pause');
+};
+
+ConvertToStream.prototype.resume = function() {
+    this._wait = false;
+    this.emit('resume');
+};
+
+ConvertToStream.prototype.destroy = function() {
+    this._buf = null;
+    this.readable = false;
+};
+  
+    
 var options;
 var parsedopts = {};
 
@@ -187,8 +248,69 @@ function percentage(part,total) {
     return ((Math.round((10000*part)/total)/100));
 }
 
+function setboard(fen) {
+    var board = new Array(64);
+    var ply = 0;
+    var epsquare = null;
+    var tomove = 0;
+    var count = 0;
+    var c;
+    var q = 'board';
+    
+    for(var i=0;i<s.length;i++) {
+        c = fen[count];
+        if(q=='board') {
+            switch(c) {
+                case 'k': case 'K':
+                case 'q': case 'Q':
+                case 'r': case 'R':
+                case 'n': case 'N':
+                case 'b': case 'B':
+                    board[squaremap[count++]] = invertcase[c];
+                    break;
+                case 'p': case 'P':
+                    board[squaremap[count++]] = '';
+                    break;
+                case '/':
+                    while(count%8 != 0) { // fill the rest of the rank with spaces
+                        count++;
+                    }
+                    break;
+                case ' ':
+                    q = 'rights';
+                    break;
+                default:
+                    count += c;
+                    break;
+            }
+        } else if(q=='rights') {
+            if(c==' ') q='castle';
+            else tomove = c=='w'?0:1;
+            count++;
+        } else if(q=='castle') {
+            if(c==' ') q='ep';
+            count++;
+        } else if(q=='ep') {
+            if(c==' ') q='hm';
+            else if(c=='-') epsquare = null;
+            else epsquare = '' + fen[count] + fen[++count];
+            count++;
+        } else if(q=='hm') {
+            var s = '';
+            while(count<s.length) {
+                s += fen[count++];
+            }
+            ply += 2*(s-1) + (tomove==0?0:1);
+            break;
+        }
+    }
+    
+    return { 'board': board, 'tomove': tomove, 'ply': ply};
+}
+
 function gather(tags,list) {
     var player_white = tags.white;
+    tags.result = tags.result || '*';
     
     if(player_white) {
         list.byplayer[player_white] = list.byplayer[player_white] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
@@ -236,7 +358,7 @@ function parsexboard(buffer) {
     var timestamp, elapsed_time;
     var currentPV = {};
     /* {first: {depth: 0, score: 0, pv: ''}, second: {depth: 0, score: 0, pv: ''}}; */
-    var res = {s: '', list: {byplayer: {}, bycols: {}, crosstable: {}}, pending: true};
+    var res = {games: [], list: {byplayer: {}, bycols: {}, crosstable: {}}, pending: true};
     
     var game = new Game();
     
@@ -268,11 +390,11 @@ function parsexboard(buffer) {
                 lastwasengine = true;
                 if(ply==0) game.firstiswhite();
                 else if(ply==1) game.firstisblack();
-            } else if(n = /myname=[^\w\d\r\n]([\w\d\-. ]+)/.exec(m[4])) {
+            } else if(n = /myname=[^\w\d\r\n]?([\w\d\-._ ]+)/.exec(m[4])) {
                 if(m[3][0]=='f') game.firstis(n[1]);
                 else game.secondis(n[1]);
                 continue;
-            } else if(n = /^[ ]*(\d+)[ ]+(-?\d+)[ ]+\d+[ ]+\d+[ ]+([^\r\n]+)/.exec(m[4])) {
+            } else if(n = /^[ ]*(\d+)[ ]+(-?\d+)[ ]+\d+[ ]+\d+[ ]+([^\r\n]+)/.exec(m[4])) {  // engine sent a PV
                 currentPV[m[3]] = {depth: n[1], score: n[2]/100, pv: n[3]};
                 continue;
             }
@@ -282,31 +404,12 @@ function parsexboard(buffer) {
             if(m[4].match(/new/)) { 
                 if(m[3][0] == 's') continue;
                 if(ply>0 && res.pending) {  
-                    // this code is replicated from the response to a 'result' command: must wrap this up somehow
-                    var player_white = game.tags.white;
-                    if(player_white) {
-                        res.list.byplayer[player_white] = res.list.byplayer[player_white] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
-                        res.list.byplayer[player_white][game.tags.result]++;
-                    }
-                    var player_black = game.tags.black
-                    if(player_black) {
-                        res.list.byplayer[player_black] = res.list.byplayer[player_black] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
-                        res.list.byplayer[player_black][invert_result[game.tags.result]]++;
-                    }
-                    if(game.tags.result in res.list.bycols) res.list.bycols[game.tags.result]++;
-                    else res.list.bycols[game.tags.result] = 1;
-                    player_white = player_white || '?';
-                    player_black = player_black || '?';
-                    
-                    if(!(player_white in res.list.crosstable)) res.list.crosstable[player_white] = [];
-                    if(!(player_black in res.list.crosstable)) res.list.crosstable[player_black] = [];
-                    res.list.crosstable[player_white].push([{colour: 'white', opponent: player_black, result: game.tags.result}]);
-                    res.list.crosstable[player_black].push([{colour: 'black', opponent: player_white, result: invert_result[game.tags.result]}]);
-                    
-                    res.s += game.toString();
+                    gather(game.tags,res.list);
+                    if(game) res.games.push(game);
+                    game = new Game();
                 };
                 res.pending = true;
-                game.refresh({first: 1, second: 1});
+                //game.refresh({first: 1, second: 1});
                 currentPV = {};
                 for(var i=0;i<board0.length;i++) board[i] = board0[i];
                 epsquare = null;
@@ -314,45 +417,33 @@ function parsexboard(buffer) {
                 tomove = 0;
                 lastwasengine = null;
                 continue;
-            } else if(s = /name\s+([\w\d\-. ]+)/.exec(m[4])) {
+            } else if(s = /name\s+([\w\d\-._ ]+)/.exec(m[4])) {
                 if(m[3][0]=='f') game.secondis(s[1]);
                 else game.firstis(s[1]);
                 continue;
-            } else if(s = /result\s+(1-0|0-1|1\/2-1\/2|\*)[ ]*({[\w\d \-._]*})/.exec(m[4])) {
+            } else if(s = /result\s+(1-0|0-1|1\/2-1\/2|\*)[ ]*({[^\r\n{]*})/.exec(m[4])) {
                 if(m[3][0] == 's') continue;
-                // this code is replicated into the response to a 'new' command: must wrap this up somehow
+                
                 game.tags.result = s[1];
                 game.tags.motivation = s[2] || '';
                 
                 if(ply>0 && res.pending) {
-                    var player_white = game.tags.white;
-                    if(player_white) {
-                        res.list.byplayer[player_white] = res.list.byplayer[player_white] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
-                        res.list.byplayer[player_white][game.tags.result]++;
-                    }
-                    var player_black = game.tags.black
-                    if(player_black) {
-                        res.list.byplayer[player_black] = res.list.byplayer[player_black] || {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0};
-                        res.list.byplayer[player_black][invert_result[game.tags.result]]++;
-                    }
-                    if(game.tags.result in res.list.bycols) res.list.bycols[game.tags.result]++;
-                    else res.list.bycols[game.tags.result] = 1;
-                    player_white = player_white || '?';
-                    player_black = player_black || '?';
-                    if(!(player_white in res.list.crosstable)) res.list.crosstable[player_white] = [];
-                    if(!(player_black in res.list.crosstable)) res.list.crosstable[player_black] = [];
-                    res.list.crosstable[player_white].push([{colour: 'white', opponent: player_black, result: game.tags.result}]);
-                    res.list.crosstable[player_black].push([{colour: 'black', opponent: player_white, result: invert_result[game.tags.result]}]);
-
-                    res.s += game.toString();
+                    gather(game.tags,res.list);
+                    res.games.push(game);
                     res.pending = false;
-                    
-                    //I'm commenting this out at the moment since it causes a (still) unclear server error
-                    //cumulative_results = res.list;
-                    //process.emit('gameover');
+                    game = new Game();
                 };
                 continue;
-            }
+            } //else if(s = /setboard +([0-9kKqQrRnNbBpP\/ \-]+)/.exec(m[4])) {
+                // if(m[3][0] == 's') continue;
+                // var nwdata = setboard(s[1]);
+                // for(var i=0;i<nwdata.board.length;i++) board[i] = nwdata.board[i];
+                // epsquare = nwdata.epsquare;
+                // ply = nwdata.ply;
+                // tomove = nwdata.tomove;
+                // lastwasengine = null;
+                // continue;
+            // }
             if(m[3][0]=='s') continue;
             n = /usermove\s+([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]);
             if(n) {
@@ -551,9 +642,10 @@ function parsexboard(buffer) {
             
             //res += ' {[%emt '+strtime(time)+'] [%eval '+score+'] [%depth '+depth+'] }';
             if('score' in dummyPV || 'depth' in dummyPV)
-                // this way recent versions of pgn4web can treat PV as if it was a variation instead of a comment
-                //game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + '} ('+ (dummyPV.pv || '') + ' ) ';  
-                game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' '+ (dummyPV.pv || '') + ' } ';
+                // with this line recent versions of pgn4web can treat PV as if it was a variation instead of a comment
+                game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + '} ('+ (dummyPV.pv || '') + ' ) ';  
+                // with this line PV.s will be visualised as comments instead
+                //game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' '+ (dummyPV.pv || '') + ' } ';
             else if('pv' in dummyPV) game.moves += ' { ' + dummyPV.pv + ' } ';
             currentPV = {};
             
@@ -566,11 +658,18 @@ function parsexboard(buffer) {
         
     }
     
-    if(ply>0 && res.pending) res.s += game.toString();
+    if(ply>0 && res.pending) res.games.push(game);
     
-    cumulative_results = res.list;
+    if(res.games.length!=cumulative_games.length) {
+        cumulative_games = res.games;
+        cumulative_results = res.list;
+        // the following signal gives a server error (425): Unable to build data connection: Invalid Argument
+        // no clue about what that means
+        //process.emit('gameover');
+    }
     
-    return res.s;
+    //return res.games.join('\n');
+    return res.games[res.games.length-1].toString();
 };
 
 function parsearena(buffer) {
@@ -816,7 +915,8 @@ function parseservermoves(buffer) {
 
 var conn = null;
 
-parser = parseservermoves;
+//parser = parseservermoves;
+parser = parsexboard;
 
 process.argv.forEach(function(arg) {
     if(/debug/.exec(arg)) debug = true;
@@ -925,7 +1025,7 @@ function fillResults() {
 
 process.on('gameover',function() {
     var res = fillResults();
-    
+        
     if(debug) {
         try {
             fs.writeFileSync('tmp.txt',res);
@@ -934,14 +1034,23 @@ process.on('gameover',function() {
         }
     } else if(conn) {
         try {
-            fs.writeFileSync('tmp.txt',res);
-            var stream = fs.createReadStream('tmp.txt');
+            //fs.writeFileSync('tmp.txt',res);
+            //var stream = fs.createReadStream('tmp.txt');
+            var stream = new ConvertToStream(res);
             stream.setEncoding('utf8');
             conn.put(stream,'EventoT.txt',function(errftp) {
                 if(errftp) {
                     console.log(errftp);
                     //throw errftp;
                 } else console.log('_'+res.length+'B sent');
+                var stream_pgn = new ConvertToStream(cumulative_games.join('\n'));
+                stream_pgn.setEncoding('utf8');
+                conn.put(stream_pgn,'Evento.pgn',function(errftp1) {
+                    if(errftp1) {
+                        //throw errftp1;
+                        console.log(errftp1);
+                    }
+                });
             });
         } catch(e) {
             console.log(e);
@@ -953,10 +1062,13 @@ process.on('gameover',function() {
 });
 
 process.on('quit',function() {
+
     var res = fillResults();
+
+    console.log('\n');
+    console.log(res);
+
     if(debug) {
-        console.log('\n');
-        console.log(res);
         try {
             fs.writeFileSync('tmp.txt',res);
         } catch(e) {
@@ -964,25 +1076,25 @@ process.on('quit',function() {
         }
         process.exit();
     } else if(conn) {
-        console.log('\n');
-        console.log(res);
         try {
-            fs.writeFileSync('tmp.txt',res);
-            var stream_table = fs.createReadStream('tmp.txt');
+            //fs.writeFileSync('tmp.txt',res);
+            //var stream_table = fs.createReadStream('tmp.txt');
+            var stream_table = new ConvertToStream(res);
             stream_table.setEncoding('utf8');
             conn.put(stream_table,'EventoT.txt',function(errftp) {
                 if(errftp) {
                     console.log(errftp);
                     //throw errftp;
                 }
-                var stream_pgn = fs.createReadStream('tmp.pgn');
+                //var stream_pgn = fs.createReadStream('tmp.pgn');
+                var stream_pgn = new ConvertToStream(cumulative_games.join('\n'));
                 stream_pgn.setEncoding('utf8');
                 conn.put(stream_pgn,'Evento.pgn',function(errftp1) {
                     if(errftp1) {
                         //throw errftp1;
                         console.log(errftp1);
                     }
-                    conn.end();    
+                    process.nextTick(function() {conn.end();});
                 });
             });
         } catch(e) {
@@ -1001,11 +1113,17 @@ if(debug) {
         var len;
         try {
             len = fs.statSync(filename).size;
-            if(len>oldlen) {
-                console.log('*');
+            if(len!=oldlen) {
+                var tmpbuf;
+                
                 oldlen = len;
                 buf = fs.readFileSync(filename,'utf8');
-                fs.writeFileSync(remotefilename,parser(buf));
+                tmpbuf = parser(buf);
+                if(tmpbuf.length!=oldlenbuf) {
+                    console.log('*');
+                    oldlenbuf = tmpbuf.length;
+                    fs.writeFileSync(remotefilename,tmpbuf);
+                }
             }
         } catch(e) {
             console.log(e);
@@ -1038,10 +1156,12 @@ if(debug) {
                         oldlen = len;
                         buf = fs.readFileSync(filename,'utf8');
                         tmpbuf = parser(buf);
-                        fs.writeFileSync('tmp.pgn',tmpbuf);
                         if(tmpbuf.length!=oldlenbuf) {
                             oldlenbuf = tmpbuf.length;
-                            var stream = fs.createReadStream('tmp.pgn');
+                            
+                            //fs.writeFileSync('tmp.pgn',tmpbuf);
+                            //var stream = fs.createReadStream('tmp.pgn');
+                            var stream = new ConvertToStream(tmpbuf);
                             stream.setEncoding('utf8');
                             conn.put(stream,remotefilename,function(errftp) {
                                 if(errftp) {
