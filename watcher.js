@@ -22,6 +22,9 @@ var debug = false;
 
 var parser;
 
+var ftpStack = [];
+var interval = null;
+
 var http = require('http');
 var fs = require('fs');
 var FTPClient = require('./node-ftp');
@@ -663,9 +666,10 @@ function parsexboard(buffer) {
     if(res.games.length!=cumulative_games.length) {
         cumulative_games = res.games;
         cumulative_results = res.list;
-        // the following signal gives a server error (425): Unable to build data connection: Invalid Argument
-        // no clue about what that means
-        //process.emit('gameover');
+        // the following signal used to give a server error (425): Unable to build data connection: Invalid Argument
+        // must have been timing issues in ftp transactions
+        // with current approach everything should work fine (except a possible race condition on 'quit'...)
+        process.emit('gameover');
     }
     
     //return res.games.join('\n');
@@ -1023,9 +1027,22 @@ function fillResults() {
     return(res);
 };
 
+function ftpSend(args) {
+    var data_stream = new ConvertToStream(args.data);
+    data_stream.setEncoding('utf8');
+    conn.put(data_stream,args.rfile,function(errftp) {
+        if(errftp) {
+            if(args.errmsg) console.log(args.errmsg);
+            console.log(errftp);
+        } else {
+            console.log((args.prompt || '*')+args.data.length+'B sent');
+        }
+    });
+};
+
 process.on('gameover',function() {
     var res = fillResults();
-        
+
     if(debug) {
         try {
             fs.writeFileSync('tmp.txt',res);
@@ -1034,24 +1051,30 @@ process.on('gameover',function() {
         }
     } else if(conn) {
         try {
-            //fs.writeFileSync('tmp.txt',res);
-            //var stream = fs.createReadStream('tmp.txt');
-            var stream = new ConvertToStream(res);
-            stream.setEncoding('utf8');
-            conn.put(stream,'EventoT.txt',function(errftp) {
-                if(errftp) {
-                    console.log(errftp);
-                    //throw errftp;
-                } else console.log('_'+res.length+'B sent');
-                var stream_pgn = new ConvertToStream(cumulative_games.join('\n'));
-                stream_pgn.setEncoding('utf8');
-                conn.put(stream_pgn,'Evento.pgn',function(errftp1) {
-                    if(errftp1) {
-                        //throw errftp1;
-                        console.log(errftp1);
-                    }
-                });
-            });
+            ftpStack.push({data: res, rfile: 'EventoT.txt', prompt: '_', errmsg: 'error sending table'});
+            ftpStack.push({data: cumulative_games.join('\n'), rfile: 'Evento.pgn', prompt: ',', errmsg: 'error sending games'});
+            // var stream_table = new ConvertToStream(res);
+            // stream_table.setEncoding('utf8');
+            // conn.put(stream_table,'EventoT.txt',function(errftp) {
+                // if(errftp) {
+                    // console.log('error sending table');
+                    // console.log(errftp);
+                    // //throw errftp;
+                // } else {
+                    // console.log('_'+res.length+'B sent');
+                    // process.nextTick(function() {
+                        // var stream_pgn = new ConvertToStream(cumulative_games.join('\n'));
+                        // stream_pgn.setEncoding('utf8');
+                        // conn.put(stream_pgn,'Evento.pgn',function(errftp1) {
+                            // if(errftp1) {
+                                // //throw errftp1;
+                                // console.log('error sending games');
+                                // console.log(errftp1);
+                            // } else console.log('games sent');
+                        // });
+                    // });
+                // }
+            // });
         } catch(e) {
             console.log(e);
         }
@@ -1062,7 +1085,9 @@ process.on('gameover',function() {
 });
 
 process.on('quit',function() {
-
+    
+    clearInterval(interval);
+    
     var res = fillResults();
 
     console.log('\n');
@@ -1077,20 +1102,23 @@ process.on('quit',function() {
         process.exit();
     } else if(conn) {
         try {
-            //fs.writeFileSync('tmp.txt',res);
-            //var stream_table = fs.createReadStream('tmp.txt');
-            var stream_table = new ConvertToStream(res);
+            fs.writeFileSync('EventoT.txt',res);
+            var stream_table = fs.createReadStream('EventoT.txt');
+            //var stream_table = new ConvertToStream(res);
             stream_table.setEncoding('utf8');
             conn.put(stream_table,'EventoT.txt',function(errftp) {
                 if(errftp) {
+                    console.log('error sending table on quit');
                     console.log(errftp);
                     //throw errftp;
                 }
-                //var stream_pgn = fs.createReadStream('tmp.pgn');
-                var stream_pgn = new ConvertToStream(cumulative_games.join('\n'));
+                fs.writeFileSync('Evento.pgn',cumulative_games.join('\n'));
+                var stream_pgn = fs.createReadStream('Evento.pgn');
+                //var stream_pgn = new ConvertToStream(cumulative_games.join('\n'));
                 stream_pgn.setEncoding('utf8');
                 conn.put(stream_pgn,'Evento.pgn',function(errftp1) {
                     if(errftp1) {
+                        console.log('error sending games on quit');
                         //throw errftp1;
                         console.log(errftp1);
                     }
@@ -1108,7 +1136,7 @@ process.on('quit',function() {
 });
 
 if(debug) {
-    setInterval(function() {
+    interval = setInterval(function() {
         var buf;
         var len;
         try {
@@ -1131,7 +1159,7 @@ if(debug) {
     }, delay * 1000);
 } else {
 
-    conn = new FTPClient({host: hostname});
+    conn = new FTPClient({host: hostname, debug: false});  // set 'debug' to some function (like console.log) to log stuff somewhere
 
     process.on('exit',function() {
         console.log('Stopping process');        
@@ -1145,32 +1173,34 @@ if(debug) {
     conn.on('connect', function() {
         conn.auth(username,password,function(err) {
             if(err) throw err;
-            setInterval(function() {
+            interval = setInterval(function() {
                 var len;
                 var buf;
                 try {
                     len = fs.statSync(filename).size;
-                    if(len!=oldlen) {
+                    if(len!=oldlen) {  // watched file has changed in length
                         var tmpbuf;
                         
                         oldlen = len;
                         buf = fs.readFileSync(filename,'utf8');
                         tmpbuf = parser(buf);
-                        if(tmpbuf.length!=oldlenbuf) {
-                            oldlenbuf = tmpbuf.length;
-                            
-                            //fs.writeFileSync('tmp.pgn',tmpbuf);
-                            //var stream = fs.createReadStream('tmp.pgn');
-                            var stream = new ConvertToStream(tmpbuf);
-                            stream.setEncoding('utf8');
-                            conn.put(stream,remotefilename,function(errftp) {
-                                if(errftp) {
-                                    console.log(errftp);
-                                    //throw errftp;
-                                } else console.log('.'+tmpbuf.length+'B sent');
-                            });
+                        if(tmpbuf.length!=oldlenbuf) {  // also the pgn file has changed
+                            oldlenbuf = tmpbuf.length;          
+                            ftpStack.push({data: tmpbuf, rfile: remotefilename, prompt: '.', errmsg: 'error sending current'});
+                            // var stream_pgn = new ConvertToStream(tmpbuf);
+                            // stream_pgn.setEncoding('utf8');
+                            // conn.put(stream_pgn,remotefilename,function(errftp) {
+                                // if(errftp) {
+                                    // console.log(errftp);
+                                    // //throw errftp;
+                                // } else console.log('.'+tmpbuf.length+'B sent');
+                            // });
                         }
                     }
+                    
+                    var arr = ftpStack.shift();
+                    if(arr) ftpSend(arr);
+
                 } catch(e) {
                 }
             }, 1000*delay);
