@@ -424,7 +424,7 @@ function parsexboard(buffer) {
                 if(m[3][0]=='f') game.secondis(s[1]);
                 else game.firstis(s[1]);
                 continue;
-            } else if(s = /result\s+(1-0|0-1|1\/2-1\/2|\*)[ ]*({[^\r\n{]*})/.exec(m[4])) {
+            } else if(s = /result\s+(1-0|0-1|1\/2-1\/2|\*)[ ]*(?:{([^\r\n]*)})?/.exec(m[4])) {
                 if(m[3][0] == 's') continue;
                 
                 game.tags.result = s[1];
@@ -681,8 +681,12 @@ function parsearena(buffer) {
     // this function must only extract game informations to make the crosstable, standing table, etc.
     
     var tagre = /\[\s*(\w+)\s*"([^\r\n]+)"\]/g;
-    var reslist = { byplayer: {}, bycols: {}, crosstable: {} };
+    //var reslist = { byplayer: {}, bycols: {}, crosstable: {} };
     var tags = { white: undefined, black: undefined, result: undefined };
+    
+    cumulative_results.byplayer = cumulative_results.byplayer || {};
+    cumulative_results.bycols = cumulative_results.bycols || {};
+    cumulative_results.crosstable = cumulative_results.crosstable || {};
     
     while(m = tagre.exec(buffer) ) {
         if(m[1] == 'White') {
@@ -691,11 +695,24 @@ function parsearena(buffer) {
             tags.black = m[2];
         } else if(m[1] == 'Result') {
             tags.result = m[2];
-            gather(tags,reslist);
+            if(m[2]!=='*') {
+                gather(tags,cumulative_results);
+                var game = new Game();
+                game.pushTag('white', tags.white);
+                game.pushTag('black', tags.black);
+                game.pushTag('result', tags.result);
+                m = /(1-0|1\/2-1\/2|0-1)\s*(?:{([^\r\n]*)})?/.exec(buffer);  // find a motivation for the result (or leave blank, i.e. '')
+                if(m[1]===tags.result) game.pushTag('motivation',m[2]);
+                m = /\][\r\n]*\s*(\d+\.(?:.|\r|\n)*)\s*(1-0|1\/2-1\/2|0-1)\s*(?:{[^\r\n]*})?[\r\n]*$/.exec(buffer); // extract the movelist (pheewww...)
+                if(m) game.moves = m[1] || '';
+                cumulative_games.push(game);
+                process.emit('gameover');
+            }
+            
         }
     }
     
-    cumulative_results = reslist;
+    //cumulative_results = reslist;
 
     return buffer;
 }
@@ -1045,7 +1062,8 @@ process.on('gameover',function() {
 
     if(debug) {
         try {
-            fs.writeFileSync('tmp.txt',res);
+            fs.writeFileSync('EventoT.txt',res);
+            fs.writeFileSync('Evento.pgn',cumulative_games.join('\n'));
         } catch(e) {
             console.log(e);
         }
@@ -1095,7 +1113,8 @@ process.on('quit',function() {
 
     if(debug) {
         try {
-            fs.writeFileSync('tmp.txt',res);
+            fs.writeFileSync('EventoT.txt',res);
+            fs.writeFileSync('Evento.pgn',cumulative_games.join('\n'));
         } catch(e) {
             console.log(e);
         }
