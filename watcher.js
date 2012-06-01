@@ -1131,17 +1131,32 @@ process.on('quit',function() {
                     console.log(errftp);
                     //throw errftp;
                 }
-                fs.writeFileSync('Evento.pgn',cumulative_games.join('\n'));
-                var stream_pgn = fs.createReadStream('Evento.pgn');
-                //var stream_pgn = new ConvertToStream(cumulative_games.join('\n'));
-                stream_pgn.setEncoding('utf8');
-                conn.put(stream_pgn,'Evento.pgn',function(errftp1) {
-                    if(errftp1) {
-                        console.log('error sending games on quit');
-                        //throw errftp1;
-                        console.log(errftp1);
-                    }
-                    process.nextTick(function() {conn.end();});
+                process.nextTick(function() {
+                    fs.writeFileSync('Evento.pgn',cumulative_games.join('\n'));
+                    var stream_pgn = fs.createReadStream('Evento.pgn');
+                    //var stream_pgn = new ConvertToStream(cumulative_games.join('\n'));
+                    stream_pgn.setEncoding('utf8');
+                    conn.put(stream_pgn,'Evento.pgn',function(errftp1) {
+                        if(errftp1) {
+                            console.log('error sending games on quit');
+                            //throw errftp1;
+                            console.log(errftp1);
+                        }
+                        process.nextTick(function() {
+                            var stream_pgn1 = fs.createReadStream('Evento.pgn');
+                            //var stream_pgn = new ConvertToStream(cumulative_games.join('\n'));
+                            stream_pgn1.setEncoding('utf8');
+                            conn.put(stream_pgn1,remotefilename,function(errftp1) {
+                                if(errftp1) {
+                                    console.log('error sending games on quit');
+                                    //throw errftp1;
+                                    console.log(errftp1);
+                                }
+                            
+                                process.nextTick(function() {conn.end();});
+                            });
+                        });
+                    });
                 });
             });
         } catch(e) {
@@ -1230,6 +1245,7 @@ if(debug) {
 };
 
 console.log('Hit Ctrl-C to exit.');
+console.log('Exiting by any other means will not trigger the\nproper upload of relevant files on the server.');
 process.stdin.resume();
 tty.setRawMode(true);
 process.stdin.on('keypress', function(chr, key) {
