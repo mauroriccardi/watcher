@@ -349,6 +349,7 @@ function parsexboard(buffer) {
     var board;
     var epsquare = null;
     var lastwasengine = null;
+    var firstcolour = 0;
     
     var r = /\n?(\d+)\s*(<|>)(first|second)\s*:[ ]*([^\r\n]+)\r?\n/g; // 1: timestamp, 
                                                           // 2: direction (<=from eng|>=to eng), 
@@ -356,10 +357,12 @@ function parsexboard(buffer) {
                                                           // 4: command passed to/from
     var m;
     var n;
-    var tomove = 0;
+    var tomove = 0;  // 0->white, 1->black
     var ply = 0;
     var timestamp, elapsed_time;
+    var force = true;
     var currentPV = {};
+    var firstname, secondname;
     /* {first: {depth: 0, score: 0, pv: ''}, second: {depth: 0, score: 0, pv: ''}}; */
     var res = {games: [], list: {byplayer: {}, bycols: {}, crosstable: {}}, pending: true};
     
@@ -377,13 +380,18 @@ function parsexboard(buffer) {
         //console.log('match: '+m[0]);
 
         if(m[2]==='<') { // engine is sending something: extract only the move, as engine authors take liberties with the protocol...
-            
             // match move in winboard format
             n = /move\s+([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]); // 1: from square (like d2), 
                                                                        // 2: to square (like d4), 
                                                                        // 3: promotion to what piece [qrnb] (only in case of promotion)
             if(n) {
                 if(m[3][0]=='s') continue;
+                if(firstcolour!==tomove) {
+                    // console.log('error, first engine sent a move out of its turn');
+                    // console.log(n);
+                    // console.log('****************');
+                    continue;
+                }
                 if(lastwasengine!=null && lastwasengine) {
                     // console.log('error, engine sent two moves in a row');
                     // console.log(n);
@@ -391,8 +399,8 @@ function parsexboard(buffer) {
                     continue;  // engine has sent two moves in a row: skip this line
                 }
                 lastwasengine = true;
-                if(ply==0) game.firstiswhite();
-                else if(ply==1) game.firstisblack();
+                if(ply%2==0) game.firstiswhite();
+                else if(ply%2==1) game.firstisblack();
             } else if(n = /myname=[^\w\d\r\n]?([\w\d\-._ ]+)/.exec(m[4])) {
                 if(m[3][0]=='f') game.firstis(n[1]);
                 else game.secondis(n[1]);
@@ -409,8 +417,13 @@ function parsexboard(buffer) {
                 if(ply>0 && res.pending) {  
                     gather(game.tags,res.list);
                     if(game) res.games.push(game);
-                    game = new Game();
                 };
+                var firstname = game.first;
+                var secondname = game.second;
+                game = new Game();
+                game.firstis(firstname);
+                game.secondis(secondname);
+                
                 res.pending = true;
                 //game.refresh({first: 1, second: 1});
                 currentPV = {};
@@ -419,6 +432,32 @@ function parsexboard(buffer) {
                 ply = 0;
                 tomove = 0;
                 lastwasengine = null;
+                firstcolour = 1;
+                continue;
+            } else if(m[4].match(/go/)) {
+                if(m[3][0] == 's') continue;
+                force = false;
+                lastwasengine = false;
+                firstcolour = tomove;
+                continue;
+            } else if(m[4].match(/playother/)) {
+                if(m[3][0] == 's') continue;
+                force = false;
+                lastwasengine = true;
+                firstcolour = 1 - tomove;
+                continue;
+            } else if(m[4].match(/force/)) {
+                if(m[3][0] == 's') continue;
+                force = true;
+                firstcolour = -1;  // just in case
+                continue;
+            } else if(m[4].match(/white/)) {
+                firstcolour = 1;
+                tomove = 0;
+                continue;
+            } else if(m[4].match(/black/)) {
+                firstcolour = 0;
+                tomove = 1;
                 continue;
             } else if(s = /name\s+([\w\d\-._ ]+)/.exec(m[4])) {
                 if(m[3][0]=='f') game.secondis(s[1]);
@@ -434,10 +473,10 @@ function parsexboard(buffer) {
                     gather(game.tags,res.list);
                     res.games.push(game);
                     res.pending = false;
-                    game = new Game();
                 };
                 continue;
-            } //else if(s = /setboard +([0-9kKqQrRnNbBpP\/ \-]+)/.exec(m[4])) {
+            } //else if(s = /setboard +([0-9kKqQrRnNbBpP\/ \-]+)/.exec(m[4])) {  // this must still be worked on to understand 
+              //                                                                 // the protocol better (forcemode?)
                 // if(m[3][0] == 's') continue;
                 // var nwdata = setboard(s[1]);
                 // for(var i=0;i<nwdata.board.length;i++) board[i] = nwdata.board[i];
@@ -445,6 +484,7 @@ function parsexboard(buffer) {
                 // ply = nwdata.ply;
                 // tomove = nwdata.tomove;
                 // lastwasengine = null;
+                // firstcolour = 1 - tomove;
                 // continue;
             // }
             if(m[3][0]=='s') continue;
@@ -454,7 +494,7 @@ function parsexboard(buffer) {
                 if(ply==0) game.firstiswhite();
                 else if(ply==1) game.firstisblack();
             } else if(n = /([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4])) {
-                if(lastwasengine!=null && !lastwasengine) {
+                if(firstcolour==tomove && !force) {
                     // console.log('error, gui sent two moves in a row');
                     // console.log(n);
                     // console.log('**************');
@@ -513,6 +553,7 @@ function parsexboard(buffer) {
                 game.moves += (capture?(fromn[0]+'x'):'') + ton + '=' + upcase[n[3]];
                 board[from] = null;
                 board[to] = tomove==1?n[3]:upcase[n[3]];
+                tomove = 1 - tomove;
                 continue;
             } else if(castle) {
                 var ft = ton[1];
