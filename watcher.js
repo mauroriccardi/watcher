@@ -475,18 +475,18 @@ function parsexboard(buffer) {
                     res.pending = false;
                 };
                 continue;
-            } //else if(s = /setboard +([0-9kKqQrRnNbBpP\/ \-]+)/.exec(m[4])) {  // this must still be worked on to understand 
-              //                                                                 // the protocol better (forcemode?)
-                // if(m[3][0] == 's') continue;
-                // var nwdata = setboard(s[1]);
-                // for(var i=0;i<nwdata.board.length;i++) board[i] = nwdata.board[i];
-                // epsquare = nwdata.epsquare;
-                // ply = nwdata.ply;
-                // tomove = nwdata.tomove;
-                // lastwasengine = null;
-                // firstcolour = 1 - tomove;
-                // continue;
-            // }
+            } else if(s = /setboard +([0-9kKqQrRnNbBpP\/ \-]+)/.exec(m[4])) {  // this must still be worked on to understand 
+                                                                              // the protocol better (forcemode?)
+                if(m[3][0] == 's') continue;
+                var nwdata = setboard(s[1]);
+                for(var i=0;i<nwdata.board.length;i++) board[i] = nwdata.board[i];
+                epsquare = nwdata.epsquare;
+                ply = nwdata.ply;
+                tomove = nwdata.tomove;
+                lastwasengine = null;
+                firstcolour = 1 - tomove;
+                continue;
+            }
             if(m[3][0]=='s') continue;
             n = /usermove\s+([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]);
             if(n) {
