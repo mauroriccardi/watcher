@@ -1,5 +1,5 @@
 /*
-    Watcher, an program to convert to PGN on the fly a game played on xboard/winboard and send it via ftp
+    Watcher, a program to convert to PGN on the fly a game played on xboard/winboard and send it via ftp
     Copyright (C) 2012  Mauro Riccardi
 
     This program is free software; you can redistribute it and/or
@@ -24,6 +24,8 @@ var parser;
 
 var ftpStack = [];
 var interval = null;
+var last_trans_time;
+var max_trans_time = 200*1000;
 
 var http = require('http');
 var fs = require('fs');
@@ -1094,6 +1096,7 @@ function ftpSend(args) {
             console.log(errftp);
         } else {
             console.log((args.prompt || '*')+args.data.length+'B sent');
+            last_trans_time = Date.now();
         }
     });
 };
@@ -1271,6 +1274,12 @@ if(debug) {
                                 // } else console.log('.'+tmpbuf.length+'B sent');
                             // });
                         }
+                    }
+                    
+                    if(!(ftpStack.length>0) && (Date.now() - last_trans_time > max_trans_time)) {  
+                        // queue a dummy transition (just the crosstable file) to reset the ftp timeout
+                        var res = fillResults();
+                        ftpStack.push({data: res, rfile: 'EventoT.txt', prompt: '|', errmsg: 'error sending table'});
                     }
                     
                     var arr = ftpStack.shift();
