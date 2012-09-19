@@ -461,7 +461,7 @@ function parsexboard(buffer) {
                 firstcolour = 0;
                 tomove = 1;
                 continue;
-            } else if(s = /name\s+([\w\d\-._ ]+)/.exec(m[4])) {
+            } else if(s = /name\s+([\w\d\-._, ]+)/.exec(m[4])) {
                 if(m[3][0]=='f') game.secondis(s[1]);
                 else game.firstis(s[1]);
                 continue;
