@@ -31,6 +31,7 @@ var http = require('http');
 var fs = require('fs');
 var FTPClient = require('./node-ftp');
 var tty = require('tty');
+var keypress = require('./keypress'); // Needed from version 0.8+ of node.js, as the old trick stopped working
 var util = require('util');
 var Stream = require('stream').Stream;
 
@@ -1296,8 +1297,16 @@ if(debug) {
 
 console.log('Hit Ctrl-C to exit.');
 console.log('Exiting by any other means will not trigger the\nproper upload of relevant files on the server.');
+
+keypress(process.stdin);   // newer versions of node.js require this: the old trick stopped working
+
+if (typeof process.stdin.setRawMode == 'function') {  // is this enough to tell different versions apart?!?
+    process.stdin.setRawMode(true);
+} else {
+    tty.setRawMode(true);
+}
 process.stdin.resume();
-tty.setRawMode(true);
+
 process.stdin.on('keypress', function(chr, key) {
     if(key && key.ctrl && key.name == 'c') {
         process.emit('quit');

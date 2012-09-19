@@ -12,12 +12,16 @@ To use it to send your games live via ftp to a relay server, you must
        you can obtain node-ftp from https://github.com/mscdex/node-ftp
        (e.g. you can use the link https://github.com/mscdex/node-ftp/zipball/master to get a zipball
        you should unzip into your 'watcher/node-ftp/' folder)
-    e) edit your watcher.ini file to reflect the details of your system. See below for details.
-    f) issue command 'node watcher.js' from folder 'watcher/'
-    g) start xboard with the option '-serverMoves=<filename>': don't forget to specify the same name with
-       the correct path into 'watcher.ini' file [this options is currently deprecated, and is not going to
-       be supported any longer: use xboard (currently the default) or arena instead]
-    h) watcher does its best to try to infer players names, but engine must take measures for this to work
+    e) do the same as the above point d) for the module named 'keypress': either use standard npm package
+       manager to install it, or download the module from https://github.com/TooTallNate/keypress
+       (e.g. you can use the link https://github.com/TooTallNate/keypress/zipball/master to get a zipball
+       to unzip into your 'watcher/keypress/' folder)
+    f) edit your watcher.ini file to reflect the details of your system. See below for details.
+    g) issue command 'node watcher.js' from folder 'watcher/'
+    h) [DEPRECATED] start xboard with the option '-serverMoves=<filename>': don't forget to specify the same
+       name with the correct path into 'watcher.ini' file [this options is currently deprecated, and is not 
+       going to be supported any longer: use xboard (currently the default) or arena instead]
+    i) watcher does its best to try to infer players names, but engine must take measures for this to work
        reliably, due to particularities of xboard protocol; if engine uses feature 'myname=<engine name>'
        then everything should work fine in ICS mode, if both engines do the same it will work also in 
        engine-engine local mode, to make it work in local human-engine games engine should use also feature
