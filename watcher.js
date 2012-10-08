@@ -557,6 +557,7 @@ function parsexboard(buffer) {
                 board[from] = null;
                 board[to] = tomove==1?n[3]:upcase[n[3]];
                 tomove = 1 - tomove;
+                ply++;
                 continue;
             } else if(castle) {
                 var ft = ton[1];
