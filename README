@@ -40,6 +40,9 @@ Options:
     will be considered a PGN file to be sent directly over to the ftp site WITHOUT ANY PROCESSING;
     you can also add option 'crosstable' to generate a crosstable of the games played (beware: it turns out
     quite ugly in case of gauntlets or similar tournaments);
+    in case the program that's going to read the produced pgn is picky about the format of the PV's, or about
+    any detail of the comments' format, you can add the option 'nocomment', that will suppress any comment in
+    the output (IMPORTANT: as for now, it WON'T work unless xboard mode is specified).
 
 Configuration file 'watcher.ini':
     This file is a simple text file, with a fixed format: each line has to be

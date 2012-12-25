@@ -41,6 +41,7 @@ var password;
 var filename;
 var remotefilename;
 var crosstable = false;
+var nocomment = false;
 var delay = 1;
 var oldlen = 0;
 var oldlenbuf = 0;
@@ -689,7 +690,8 @@ function parsexboard(buffer) {
             }
             
             //res += ' {[%emt '+strtime(time)+'] [%eval '+score+'] [%depth '+depth+'] }';
-            if('score' in dummyPV || 'depth' in dummyPV)
+            if(nocomment) {  // if nocomment set, avoid sending any kind of comment (as the plugin is probably going to choke on comments)
+            } else if('score' in dummyPV || 'depth' in dummyPV)
                 // with this line recent versions of pgn4web can treat PV as if it was a variation instead of a comment
                 game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + '} ('+ (dummyPV.pv || '') + ' ) ';  
                 // with this line PV.s will be visualised as comments instead
@@ -989,6 +991,7 @@ process.argv.forEach(function(arg) {
     else if(/xboard/.exec(arg)) parser = parsexboard;
     else if(/arena/.exec(arg)) parser = parsearena;//function(buffer) { return buffer; };
     else if(/crosstable/.exec(arg)) crosstable = true;
+    else if(/nocomment/.exec(arg)) nocomment = true;
 });
 
 function fillResults() {  
