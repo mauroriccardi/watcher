@@ -42,6 +42,7 @@ var filename;
 var remotefilename;
 var crosstable = false;
 var nocomment = false;
+var showratings = true;
 var delay = 1;
 var oldlen = 0;
 var oldlenbuf = 0;
@@ -111,7 +112,12 @@ Game.prototype.toString =
         res += '[White "'+(this.tags.white || '?')+'"]\n';
         res += '[Black "'+(this.tags.black || '?')+'"]\n';
         res += '[Date "'+pgn_date(new Date())+'"]\n';
-        res += '[Result "'+(this.tags.result || '*')+'"]\n\n';
+        res += '[Result "'+(this.tags.result || '*')+'"]\n';
+        if(showratings) {
+			res += '[WhiteElo "'+(this.tags.whiteelo)+'"]\n';
+			res += '[BlackElo "'+(this.tags.blackelo)+'"]\n';
+		}
+		res += '\n';
         res += this.moves;
         res += '\n\n'+(this.tags.result || '*')+' '+(this.tags.motivation || '')+'\n\n';
         
@@ -139,27 +145,55 @@ Game.prototype.refresh =
 Game.prototype.firstis =
     function(player) {
         this.first = player;
-        if(this.tags.whitefirst) this.tags.white = player;
-        else if(this.tags.blackfirst) this.tags.black = player;
+        if(this.tags.whitefirst) {
+			this.tags.white = player;
+			//this.tags.whiteelo = this.firstrating;
+			//this.tags.blackelo = this.secondrating;
+		} else if(this.tags.blackfirst) {
+			this.tags.black = player;
+			//this.tags.blackelo = this.firstrating;
+			//this.tags.whiteelo = this.secondrating;
+		}
     };
 Game.prototype.secondis =
     function(player) {
         this.second = player;
-        if(this.tags.whitefirst) this.tags.black = player;
-        else if(this.tags.blackfirst) this.tags.white = player;
+        if(this.tags.whitefirst) {
+			this.tags.black = player;
+			//this.tags.whiteelo = this.firstelo;
+			//this.tags.blackelo = this.secondelo;
+		} else if(this.tags.blackfirst) {
+			this.tags.white = player;
+			//this.tags.blackelo = this.firstelo;
+			//this.tags.whiteelo = this.secondelo;
+		}
     };
 Game.prototype.firstiswhite =
     function() {
         if(this.first) this.tags.white = this.tags.white || this.first;
         if(this.second) this.tags.black = this.tags.black || this.second;
         this.tags.whitefirst = 1;
+        
+        this.tags.whiteelo = this.firstelo;
+        this.tags.blackelo = this.secondelo;
     };
 Game.prototype.firstisblack =
     function() {
         if(this.first) this.tags.black = this.tags.black || this.first;
         if(this.second) this.tags.white = this.tags.white || this.second;
         this.tags.blackfirst = 1;
+        
+        this.tags.blackelo = this.firstelo;
+        this.tags.whiteelo = this.secondelo;        
     };    
+Game.prototype.firstrating =
+	function(rating) {
+		this.firstelo = rating;
+	};
+Game.prototype.secondrating =
+	function(rating) {
+		this.secondelo = rating;
+	};
     
 function ConvertToStream(source, parser) {  
 
@@ -244,6 +278,7 @@ delay = parsedopts.delay || 1;
 hostname = parsedopts.hostname || '127.0.0.1';
 
 function strtime(time) {
+	time = time/1000;
     var s = time % 60;
     time = (time - s)/60;
     var m = time % 60;
@@ -364,6 +399,7 @@ function parsexboard(buffer) {
     var tomove = 0;  // 0->white, 1->black
     var ply = 0;
     var timestamp, elapsed_time;
+    var time;
     var force = true;
     var currentPV = {};
     var firstname, secondname;
@@ -380,7 +416,7 @@ function parsexboard(buffer) {
     
     while( m = r.exec(buffer) ) {
         
-        timestamp = m[1];
+        //timestamp = m[1];
         //console.log('match: '+m[0]);
 
         if(m[2]==='<') { // engine is sending something: extract only the move, as engine authors take liberties with the protocol...
@@ -389,6 +425,7 @@ function parsexboard(buffer) {
                                                                        // 2: to square (like d4), 
                                                                        // 3: promotion to what piece [qrnb] (only in case of promotion)
             if(n) {
+				time = m[1] - timestamp; // engine sent a move, subtract from timestamp of last time command (relying on this feature of the protocol)
                 if(m[3][0]=='s') continue;
                 if(firstcolour!==tomove) {
                     // console.log('error, first engine sent a move out of its turn');
@@ -463,11 +500,19 @@ function parsexboard(buffer) {
                 firstcolour = 0;
                 tomove = 1;
                 continue;
-            } else if(s = /name\s+([\w\d\-._, ]+)/.exec(m[4])) {
+            } else if(m[4].match(/time/)) { // WIP
+				timestamp = m[1];
+				continue;
+			} else if(s = /name\s+([\w\d\-._, ]+)/.exec(m[4])) {
                 if(m[3][0]=='f') game.secondis(s[1]);
                 else game.firstis(s[1]);
                 continue;
-            } else if(s = /result\s+(1-0|0-1|1\/2-1\/2|\*)[ ]*(?:{([^\r\n]*)})?/.exec(m[4])) {
+            } else if(s = /rating\s+([0-9]+)\s+([0-9]+)/.exec(m[4])) {
+				if(m[3]=='s') continue;
+				game.firstrating(s[1]);
+				game.secondrating(s[2]);
+				continue;
+			} else if(s = /result\s+(1-0|0-1|1\/2-1\/2|\*)[ ]*(?:{([^\r\n]*)})?/.exec(m[4])) {
                 if(m[3][0] == 's') continue;
                 
                 game.tags.result = s[1];
@@ -523,7 +568,7 @@ function parsexboard(buffer) {
             var castle = false;
             var depth;
             var score;
-            var time;
+            //var time = 0;
             var dummyPV;
             
             if(tomove==0) { // white's turn
@@ -693,7 +738,7 @@ function parsexboard(buffer) {
             if(nocomment) {  // if nocomment set, avoid sending any kind of comment (as the plugin is probably going to choke on comments)
             } else if('score' in dummyPV || 'depth' in dummyPV)
                 // with this line recent versions of pgn4web can treat PV as if it was a variation instead of a comment
-                game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + '} ('+ (dummyPV.pv || '') + ' ) ';  
+                game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + '[%emt '+strtime(time)+']' + '} ('+ (dummyPV.pv || '') + ' ) ';  
                 // with this line PV.s will be visualised as comments instead
                 //game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' '+ (dummyPV.pv || '') + ' } ';
             else if('pv' in dummyPV) game.moves += ' { ' + dummyPV.pv + ' } ';
