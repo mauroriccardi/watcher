@@ -114,9 +114,10 @@ Game.prototype.toString =
         res += '[Date "'+pgn_date(new Date())+'"]\n';
         res += '[Result "'+(this.tags.result || '*')+'"]\n';
         if(showratings) {
-			res += '[WhiteElo "'+(this.tags.whiteelo)+'"]\n';
-			res += '[BlackElo "'+(this.tags.blackelo)+'"]\n';
+			res += '[WhiteElo "'+(this.tags.whiteelo || '-')+'"]\n';
+			res += '[BlackElo "'+(this.tags.blackelo || '-')+'"]\n';
 		}
+		res += '[TimeControl "'+(this.tags.timecontrol?((this.tags.timecontrol.mps>0?this.tags.timecontrol.mps+'/':'')+this.tags.timecontrol.basetime+'+'+this.tags.timecontrol.inc):'?')+'"]\n';
 		res += '\n';
         res += this.moves;
         res += '\n\n'+(this.tags.result || '*')+' '+(this.tags.motivation || '')+'\n\n';
@@ -425,7 +426,7 @@ function parsexboard(buffer) {
                                                                        // 2: to square (like d4), 
                                                                        // 3: promotion to what piece [qrnb] (only in case of promotion)
             if(n) {
-				time = m[1] - timestamp; // engine sent a move, subtract from timestamp of last time command (relying on this feature of the protocol)
+				time = m[1] - timestamp; // engine sent a move, subtract from the timestamp of last time command (relying on this feature of the protocol)
                 if(m[3][0]=='s') continue;
                 if(firstcolour!==tomove) {
                     // console.log('error, first engine sent a move out of its turn');
@@ -475,7 +476,21 @@ function parsexboard(buffer) {
                 lastwasengine = null;
                 firstcolour = 1;
                 continue;
-            } else if(m[4].match(/go/)) {
+            } else if(s = /level\s+([0-9]+)\s+([0-9:]+)\s+([0-9]+)/.exec(m[4])) {
+				var mps = s[1];
+				var inc = s[3];
+				var tps;
+				var baset;
+				
+				if(!('timecontrol' in game.tags)) { // timecontrol might already have been set
+					var z = s[2].match(/([0-9]+):([0-9]+)/);
+					if(z) {  // level sent time per session in the form min:sec
+						baset = z[1]*60+z[2];
+					} else baset = s[2];  // just sec
+					game.tags.timecontrol = {'mps': mps, 'basetime': baset, 'inc': inc};
+				}
+				continue;
+			} else if(m[4].match(/go/)) {
                 if(m[3][0] == 's') continue;
                 force = false;
                 lastwasengine = false;
@@ -500,7 +515,7 @@ function parsexboard(buffer) {
                 firstcolour = 0;
                 tomove = 1;
                 continue;
-            } else if(m[4].match(/time/)) { // WIP
+            } else if(m[4].match(/time/)) { // emt starts when the engine receives the time command (this is the only choice that seems to make sense)
 				timestamp = m[1];
 				continue;
 			} else if(s = /name\s+([\w\d\-._, ]+)/.exec(m[4])) {
