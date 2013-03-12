@@ -785,10 +785,10 @@ function parsexboard(buffer) {
             if(nocomment) {  // if nocomment set, avoid sending any kind of comment (as the plugin is probably going to choke on comments)
             } else if('score' in dummyPV || 'depth' in dummyPV)
                 // with this line recent versions of pgn4web can treat PV as if it was a variation instead of a comment
-                game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' [%emt '+strtime(time)+'][%clk '+ strtime(dummyclk) +'] } ('+ (dummyPV.pv || '') + ' ) ';  
+                game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' [%emt '+strtime(time)+'][%clk '+ strtime(dummyclk) +'] } ('+ (dummyPV.pv || '') + ') ';  
                 // with this line PV.s will be visualised as comments instead
                 //game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' '+ (dummyPV.pv || '') + ' } ';
-            else if('pv' in dummyPV) game.moves += ' { ' + dummyPV.pv + ' } ';
+            else if('pv' in dummyPV) game.moves += ' { [%emt '+strtime(time)+'][%clk '+ strtime(dummyclk) +'] } ('+ (dummyPV.pv || '') + ') ';  
             currentPV = {};
             
             board[from] = null;
