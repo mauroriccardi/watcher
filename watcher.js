@@ -280,10 +280,11 @@ hostname = parsedopts.hostname || '127.0.0.1';
 
 function strtime(time) {
 	time = time/1000;
-    var s = time % 60;
-    time = (time - s)/60;
+    var s = (time % 60).toFixed(2);
+    time = Math.floor(time/60);
     var m = time % 60;
-    time = (time - m)/60;
+    time = Math.floor(time/60);
+    
     return(time+':'+(m<10?'0'+m:m)+':'+(s<10?'0'+s:s));
 }
 
@@ -400,6 +401,7 @@ function parsexboard(buffer) {
     var tomove = 0;  // 0->white, 1->black
     var ply = 0;
     var timestamp, elapsed_time;
+    var clk = {};
     var time;
     var force = true;
     var currentPV = {};
@@ -427,6 +429,9 @@ function parsexboard(buffer) {
                                                                        // 3: promotion to what piece [qrnb] (only in case of promotion)
             if(n) {
 				time = m[1] - timestamp; // engine sent a move, subtract from the timestamp of last time command (relying on this feature of the protocol)
+				if(m[3][0] == 'f') clk.first -= time; // since it was first engine's turn, decrease his clock
+				else clk.second -= time; // it was second's turn
+
                 if(m[3][0]=='s') continue;
                 if(firstcolour!==tomove) {
                     // console.log('error, first engine sent a move out of its turn');
@@ -515,8 +520,14 @@ function parsexboard(buffer) {
                 firstcolour = 0;
                 tomove = 1;
                 continue;
-            } else if(m[4].match(/time/)) { // emt starts when the engine receives the time command (this is the only choice that seems to make sense)
+            } else if(s = /time\s+([0-9]+)/.exec(m[4])) { // emt starts when the engine receives the time command (this is the only choice that seems to make sense)
 				timestamp = m[1];
+				if(m[3][0] == 'f') clk.first = 10*s[1]; // 'time' carries the time in centiseconds, while .debug lines have a timestamp given in milliseconds
+				else clk.second = 10*s[1];
+				continue;
+			} else if(s = /otim\s+([0-9]+)/.exec(m[4])) { // this is always sent together with 'time'
+				if(m[3][0] == 'f') clk.second = 10*s[1]; // 'otim' carries the time in centiseconds, while .debug lines have a timestamp given in milliseconds
+				else clk.first = 10*s[1];
 				continue;
 			} else if(s = /name\s+([\w\d\-._, ]+)/.exec(m[4])) {
                 if(m[3][0]=='f') game.secondis(s[1]);
@@ -585,15 +596,26 @@ function parsexboard(buffer) {
             var score;
             //var time = 0;
             var dummyPV;
+            var dummyclk;
             
             if(tomove==0) { // white's turn
-                if(game.tags.whitefirst) dummyPV = currentPV.first || {};
-                else dummyPV = currentPV.second || {};
+                if(game.tags.whitefirst) {
+					dummyPV = currentPV.first || {};
+					dummyclk = clk.first || 0;
+				} else {
+					dummyPV = currentPV.second || {};
+					dummyclk = clk.second || 0;
+				}
             } else { // black's turn
-                if(game.tags.blackfirst) dummyPV = currentPV.first || {};
-                else dummyPV = currentPV.second || {};
+                if(game.tags.blackfirst) {
+					dummyPV = currentPV.first || {};
+					dummyclk = clk.first || 0;
+				} else {
+					dummyPV = currentPV.second || {};
+					dummyclk = clk.second || 0;
+				}
             }
-            
+
             // console.log(show_board(board));
             // console.log(n);
             
@@ -753,7 +775,7 @@ function parsexboard(buffer) {
             if(nocomment) {  // if nocomment set, avoid sending any kind of comment (as the plugin is probably going to choke on comments)
             } else if('score' in dummyPV || 'depth' in dummyPV)
                 // with this line recent versions of pgn4web can treat PV as if it was a variation instead of a comment
-                game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + '[%emt '+strtime(time)+']' + '} ('+ (dummyPV.pv || '') + ' ) ';  
+                game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' [%emt '+strtime(time)+'][%clk '+ strtime(dummyclk) +'] } ('+ (dummyPV.pv || '') + ' ) ';  
                 // with this line PV.s will be visualised as comments instead
                 //game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' '+ (dummyPV.pv || '') + ' } ';
             else if('pv' in dummyPV) game.moves += ' { ' + dummyPV.pv + ' } ';
