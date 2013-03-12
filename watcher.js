@@ -117,6 +117,8 @@ Game.prototype.toString =
 			res += '[WhiteElo "'+(this.tags.whiteelo || '-')+'"]\n';
 			res += '[BlackElo "'+(this.tags.blackelo || '-')+'"]\n';
 		}
+		res += '[WhiteType "'+ (this.tags.whitecomputer?'program':'human') +'"]\n';
+		res += '[BlackType "'+ (this.tags.blackcomputer?'program':'human') +'"]\n';
 		res += '[TimeControl "'+(this.tags.timecontrol?((this.tags.timecontrol.mps>0?this.tags.timecontrol.mps+'/':'')+this.tags.timecontrol.basetime+'+'+this.tags.timecontrol.inc):'?')+'"]\n';
 		res += '\n';
         res += this.moves;
@@ -177,6 +179,8 @@ Game.prototype.firstiswhite =
         
         this.tags.whiteelo = this.firstelo;
         this.tags.blackelo = this.secondelo;
+        this.tags.whitecomputer = this.firstiscomputer || false;
+        this.tags.blackcomputer = this.secondiscomputer || false;
     };
 Game.prototype.firstisblack =
     function() {
@@ -186,6 +190,8 @@ Game.prototype.firstisblack =
         
         this.tags.blackelo = this.firstelo;
         this.tags.whiteelo = this.secondelo;        
+        this.tags.blackcomputer = this.firstiscomputer || false;
+        this.tags.whitecomputer = this.secondiscomputer || false;        
     };    
 Game.prototype.firstrating =
 	function(rating) {
@@ -537,6 +543,10 @@ function parsexboard(buffer) {
 				if(m[3]=='s') continue;
 				game.firstrating(s[1]);
 				game.secondrating(s[2]);
+				continue;
+			} else if(m[4].match(/computer/)) {  // Note: since the GUI is communicating via stdin/out with the first player, then it must be a computer :-) ; moreover there is a second player only if the first slot is already occupied by a computer
+				if(m[3][0] == 'f') game.secondiscomputer = true;
+				game.firstiscomputer = true;
 				continue;
 			} else if(s = /result\s+(1-0|0-1|1\/2-1\/2|\*)[ ]*(?:{([^\r\n]*)})?/.exec(m[4])) {
                 if(m[3][0] == 's') continue;
