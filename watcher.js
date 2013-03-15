@@ -44,6 +44,9 @@ var crosstable = false;
 var nocomment = false;
 var showratings = true;
 var delay = 1;
+var whitename = null;
+var blackname = null;
+
 var oldlen = 0;
 var oldlenbuf = 0;
 
@@ -70,22 +73,22 @@ console.log('Watcher comes with ABSOLUTELY NO WARRANTY.');
 console.log('This is free software, and you are welcome');
 console.log('to redistribute it under certain conditions.\nSee file COPYING and/or license details in the source for details.');
 
-// function show_board(board) {
-    // var res = '';
-    // var d;
+ function show_board(board) {
+     var res = '';
+     var d;
     
-    // for(var j = 7; j>=0; j--) {
-        // for(var i = 0;i<8;i++) {
-            // if(board[i+8*j] == null) d = ' ';
-            // else if(board[i+8*j] == '') d = 'P';
-            // else d = board[i+8*j];
-            // res += d+' ';
-        // }
-        // res += '\n';
-    // }
+     for(var j = 7; j>=0; j--) {
+         for(var i = 0;i<8;i++) {
+             if(board[i+8*j] == null) d = ' ';
+             else if(board[i+8*j] == '') d = 'P';
+             else d = board[i+8*j];
+             res += d+' ';
+         }
+         res += '\n';
+     }
     
-    // return res;
-// }
+     return res;
+ }
 
 for(var rank = 1; rank<=8; rank++) {
     files.forEach(function(file) {
@@ -101,16 +104,20 @@ function pgn_date(date) {
     return date.getUTCFullYear()+'.'+(date.getUTCMonth()+1)+'.'+date.getUTCDate();
 };
 
-function Game(tags, moves) {
+function Game(tags, moves, movelist) {
     this.tags = tags || {};
     this.moves = moves || '';
+    this.movelist = movelist || [];
 };
 Game.prototype.toString =
     function () {
         var res = '';
-        
-        res += '[White "'+(this.tags.white || '?')+'"]\n';
-        res += '[Black "'+(this.tags.black || '?')+'"]\n';
+        // if the white=<name> or black=<name> options are used this will override any name inference by the parser
+        // based on the xboard.debug file (dirty hack)
+        if(whitename==null) res += '[White "'+(this.tags.white || '?')+'"]\n';
+        else res += '[White "'+whitename+'"]\n';
+        if(blackname==null) res += '[Black "'+(this.tags.black || '?')+'"]\n';
+        else res += '[Black "'+blackname+'"]\n';
         res += '[Date "'+pgn_date(new Date())+'"]\n';
         res += '[Result "'+(this.tags.result || '*')+'"]\n';
         if(showratings) {
@@ -121,7 +128,11 @@ Game.prototype.toString =
 		res += '[BlackType "'+ (this.tags.blackcomputer?'program':'human') +'"]\n';
 		res += '[TimeControl "'+(this.tags.timecontrol?((this.tags.timecontrol.mps>0?this.tags.timecontrol.mps+'/':'')+this.tags.timecontrol.basetime+'+'+this.tags.timecontrol.inc):'?')+'"]\n';
 		res += '\n';
-        res += this.moves;
+        //res += this.moves;
+        //res += '\n';
+
+        for(var ply = 0;ply<this.movelist.length;ply++) 
+			res += (ply%2==0?' '+(Math.floor(ply/2)+1)+'. ':' ')+this.movelist[ply].text;
         res += '\n\n'+(this.tags.result || '*')+' '+(this.tags.motivation || '')+'\n\n';
         
         return res;
@@ -410,6 +421,7 @@ function parsexboard(buffer) {
     var clk = {};
     var time;
     var force = true;
+    var analysis = false;
     var currentPV = {};
     var firstname, secondname;
     /* {first: {depth: 0, score: 0, pv: ''}, second: {depth: 0, score: 0, pv: ''}}; */
@@ -487,13 +499,19 @@ function parsexboard(buffer) {
                 lastwasengine = null;
                 firstcolour = 1;
                 continue;
-            } else if(s = /level\s+([0-9]+)\s+([0-9:]+)\s+([0-9]+)/.exec(m[4])) {
+            } else if(m[4].match(/analyze/)) {
+				analysis = true;
+				continue;
+			} else if(m[4].match(/exit/)) {
+				if(analysis) analysis = false;
+				continue;
+			} else if(s = /level\s+([0-9]+)\s+([0-9:]+)\s+([0-9]+)/.exec(m[4])) {
 				var mps = s[1];
 				var inc = s[3];
 				var tps;
 				var baset;
 				
-				if(!('timecontrol' in game.tags)) { // timecontrol might already have been set
+				if(!('timecontrol' in game.tags)) { // timecontrol might have already been set
 					var z = s[2].match(/([0-9]+):([0-9]+)/);
 					if(z) {  // level sent time per session in the form min:sec
 						baset = z[1]*60+z[2];
@@ -571,7 +589,23 @@ function parsexboard(buffer) {
                 lastwasengine = null;
                 firstcolour = 1 - tomove;
                 continue;
-            }
+            } else if(m[4].match(/undo/)) {
+				if(m[3][0]=='s') continue;
+				var rr = game.movelist.pop();
+				//console.log('undo');
+				//console.log(square);
+				//console.log(rr.restore);
+				//console.log(show_board(board));
+				ply--;
+				tomove = 1 - tomove;
+				lastwasengine = ~lastwasengine;
+				rr.restore.put.forEach(function(x) {
+					board[x.sq] = x.obj;
+				});
+				epsquare = rr.restore.epsq;
+				//console.log(show_board(board));
+				continue;
+			}
             if(m[3][0]=='s') continue;
             n = /usermove\s+([a-h][1-8])([a-h][1-8])([qrnb]?)/.exec(m[4]);
             if(n) {
@@ -607,6 +641,8 @@ function parsexboard(buffer) {
             //var time = 0;
             var dummyPV;
             var dummyclk;
+            var dummymove = '';
+            var restore = {put: [], epsq: epsquare};
             
             if(tomove==0) { // white's turn
                 if(game.tags.whitefirst) {
@@ -647,6 +683,11 @@ function parsexboard(buffer) {
             
             if(promotion) {
                 game.moves += (capture?(fromn[0]+'x'):'') + ton + '=' + upcase[n[3]];
+                dummymove = (capture?(fromn[0]+'x'):'') + ton + '=' + upcase[n[3]];
+                restore = {put: // restore has the info about how to restore the previous board: promotion case is exceptional
+							[{sq: from, obj: board[from]}, 
+							 {sq: to, obj: board[to]}
+							], epsq: epsquare};
                 board[from] = null;
                 board[to] = tomove==1?n[3]:upcase[n[3]];
                 tomove = 1 - tomove;
@@ -656,23 +697,40 @@ function parsexboard(buffer) {
                 var ft = ton[1];
                 if(ton[0]=='g') {
                     game.moves += 'O-O';
+                    dummymove = 'O-O';
+                    restore = {put: // to unmake the castle, first restore the rook
+								[{sq: square['h'+ft], obj: board[square['h'+ft]]},
+								 {sq: square['f'+ft], obj: null}],
+							   epsq: epsquare};
                     board[square['h'+ft]] = null;
                     board[square['f'+ft]] = (tomove==0?'r':'R');
                 } else {
                     game.moves += 'O-O-O';
+                    dummymove = 'O-O-O';
+                    restore = {put: // to unmake the castle, first restore the rook
+								[{sq: square['a'+ft], obj: board[square['a'+ft]]},
+								 {sq: square['d'+ft], obj: null}],
+							   epsq: epsquare};
                     board[square['a'+ft]] = null;
                     board[square['d'+ft]] = (tomove==0?'r':'R');
                 }
             } else if(enpassant) {
                 game.moves += fromn[0]+'x'+ton;
+                dummymove = fromn[0]+'x'+ton;
+                restore = {put: // to restore enpassant restore the capt'd pawn, then clear the landing square for capturing pawn
+							[{sq: square[ton[0]+fromn[1]], obj: board[square[ton[0]+fromn[1]]]},
+							 ],
+						   epsq: epsquare}
                 board[square[ton[0]+fromn[1]]] = null;
-                board[to] = '';
+                //board[to] = '';
             } else {
                 var total = 0;
                 var same_file = 0;
                 var same_rank = 0;
                 
                 game.moves += (piece=='' && capture)?fromn[0]:piece;
+                dummymove += (piece=='' && capture)?fromn[0]:piece;
+                restore.epsq = epsquare; // to restore any move not accounted for in prev if-else branches restore epsquare first
                 
                 if(piece=='') {
                     var fr = fromn[1];
@@ -682,6 +740,8 @@ function parsexboard(buffer) {
                     else epsquare = null;
                 } else if(piece=='N') {
                     var to88 = to + (to & 56);
+                    
+                    epsquare = null;
                     knightjumps88.forEach(function(jump) {
                         var dum = to88 + jump;
                         
@@ -698,6 +758,7 @@ function parsexboard(buffer) {
                     var to88 = to + (to & 56);
                     var dum;
                     
+                    epsquare = null;
                     for(x=to88+1; x<128 && !(x & 0x88); x++) {
                         dum = board[((x >> 1) & 56)+(x & 7)];
                         if(dum==casedpiece) {
@@ -735,6 +796,7 @@ function parsexboard(buffer) {
                     var to88 = to + (to & 56);
                     var dum;
                     
+                    epsquare = null;
                     for(x=to88+17; x<128 && !(x & 0x88); x+=17) {
                         dum = board[((x >> 1) & 56)+(x & 7)];
                         if(dum==casedpiece) {
@@ -773,24 +835,57 @@ function parsexboard(buffer) {
                     }                   
                 }
                 if(total>1) {
-                    if(same_file<=1) game.moves += fromn[0];
-                    else if(same_rank<=1) game.moves += fromn[1];
-                    else game.moves += fromn;
+                    if(same_file<=1) {
+						game.moves += fromn[0];
+						dummymove += fromn[0];
+					} else if(same_rank<=1) {
+						game.moves += fromn[1];
+						dummymove += fromn[1];
+                    } else {
+						game.moves += fromn;
+						dummymove += fromn;
+					}
                     
                 }
                 game.moves += (capture?'x'+ton:ton);
+                dummymove += (capture?'x'+ton:ton);
             }
             
             //res += ' {[%emt '+strtime(time)+'] [%eval '+score+'] [%depth '+depth+'] }';
             if(nocomment) {  // if nocomment set, avoid sending any kind of comment (as the plugin is probably going to choke on comments)
-            } else if('score' in dummyPV || 'depth' in dummyPV)
-                // with this line recent versions of pgn4web can treat PV as if it was a variation instead of a comment
-                game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' [%emt '+strtime(time)+'][%clk '+ strtime(dummyclk) +'] } ('+ (dummyPV.pv || '') + ') ';  
-                // with this line PV.s will be visualised as comments instead
-                //game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' '+ (dummyPV.pv || '') + ' } ';
-            else if('pv' in dummyPV) game.moves += ' { [%emt '+strtime(time)+'][%clk '+ strtime(dummyclk) +'] } ('+ (dummyPV.pv || '') + ') ';  
+            } else if(analysis==false) {
+				if('score' in dummyPV || 'depth' in dummyPV) {
+					// with this line recent versions of pgn4web can treat PV as if it was a variation instead of a comment
+					game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' [%emt '+strtime(time)+'][%clk '+ strtime(dummyclk) +'] } ('+ (dummyPV.pv || '') + ') ';  
+					dummymove += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' [%emt '+strtime(time)+'][%clk '+ strtime(dummyclk) +'] } ('+ (dummyPV.pv || '') + ') ';  
+					// with this line PV.s will be visualised as comments instead
+					//game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' '+ (dummyPV.pv || '') + ' } ';
+				} else if('pv' in dummyPV) {
+					game.moves += ' { [%emt '+strtime(time)+'][%clk '+ strtime(dummyclk) +'] } ('+ (dummyPV.pv || '') + ') ';
+					dummymove += ' { [%emt '+strtime(time)+'][%clk '+ strtime(dummyclk) +'] } ('+ (dummyPV.pv || '') + ') ';
+				}
+			} else if(analysis) {
+				for(var k in currentPV) {
+					dummyPV = currentPV[k];
+					if('score' in dummyPV || 'depth' in dummyPV) {
+						// with this line recent versions of pgn4web can treat PV as if it was a variation instead of a comment
+						game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' } ('+ (dummyPV.pv || '') + ') ';  
+						dummymove += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' } ('+ (dummyPV.pv || '') + ') ';  
+						// with this line PV.s will be visualised as comments instead
+						//game.moves += ' { ' + (dummyPV.score || '') + '/' + (dummyPV.depth || '') + ' '+ (dummyPV.pv || '') + ' } ';
+					} else if('pv' in dummyPV) {
+						game.moves += ' ('+ (dummyPV.pv || '') + ') ';
+						dummymove += ' ('+ (dummyPV.pv || '') + ') ';
+					}
+				}
+			}
+			
+			restore.put.push({sq: from, obj: board[from]});  // restore moving piece (put it back where it was)
+			restore.put.push({sq: to, obj: board[to]});      // now restore destination square (where a piece might have been or not)
+			
+			game.movelist.push({text: dummymove, restore: restore});
+						
             currentPV = {};
-            
             board[from] = null;
             board[to] = casedpiece;
         }
@@ -798,6 +893,8 @@ function parsexboard(buffer) {
         ply++;
         tomove = 1-tomove;
         
+        //console.log('move');
+        //console.log(show_board(board));
     }
     
     if(ply>0 && res.pending) res.games.push(game);
@@ -812,7 +909,7 @@ function parsexboard(buffer) {
     }
     
     //return res.games.join('\n');
-    return res.games[res.games.length-1].toString();
+    return res.games.length<1?game.toString():res.games[res.games.length-1].toString();
 };
 
 function parsearena(buffer) {
@@ -1079,11 +1176,15 @@ var conn = null;
 parser = parsexboard;
 
 process.argv.forEach(function(arg) {
+	var s;
+
     if(/debug/.exec(arg)) debug = true;
     else if(/xboard/.exec(arg)) parser = parsexboard;
     else if(/arena/.exec(arg)) parser = parsearena;//function(buffer) { return buffer; };
     else if(/crosstable/.exec(arg)) crosstable = true;
     else if(/nocomment/.exec(arg)) nocomment = true;
+    else if(s=/white=("?[\w\d.,-_() +&]+"?)/.exec(arg)) whitename = s[1];  // the value of white option will override the value of White tag in pgn
+    else if(s=/black=("?[\w\d.,-_() +&]+"?)/.exec(arg)) blackname = s[1];  // the value of black option will override the value of Black tag in pgn
 });
 
 function fillResults() {  
