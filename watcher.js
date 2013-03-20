@@ -46,6 +46,8 @@ var showratings = true;
 var delay = 1;
 var whitename = null;
 var blackname = null;
+var site = null;
+var event = null;
 
 var oldlen = 0;
 var oldlenbuf = 0;
@@ -114,15 +116,18 @@ Game.prototype.toString =
         var res = '';
         // if the white=<name> or black=<name> options are used this will override any name inference by the parser
         // based on the xboard.debug file (dirty hack)
+        res += '[Event "'+(event || '?')+'"]\n';
+        res += '[Site "'+(site || '?')+'"]\n';
+        res += '[Date "'+pgn_date(new Date())+'"]\n';
+        res += '[Round "'+(this.tags.round || '-')+'"]\n';
         if(whitename==null) res += '[White "'+(this.tags.white || '?')+'"]\n';
         else res += '[White "'+whitename+'"]\n';
         if(blackname==null) res += '[Black "'+(this.tags.black || '?')+'"]\n';
         else res += '[Black "'+blackname+'"]\n';
-        res += '[Date "'+pgn_date(new Date())+'"]\n';
         res += '[Result "'+(this.tags.result || '*')+'"]\n';
         if(showratings) {
-			res += '[WhiteElo "'+(this.tags.whiteelo || '-')+'"]\n';
-			res += '[BlackElo "'+(this.tags.blackelo || '-')+'"]\n';
+			if(this.tags.whiteelo) res += '[WhiteElo "'+this.tags.whiteelo+'"]\n';
+			if(this.tags.blackelo) res += '[BlackElo "'+this.tags.blackelo+'"]\n';
 		}
 		res += '[WhiteType "'+ (this.tags.whitecomputer?'program':'human') +'"]\n';
 		res += '[BlackType "'+ (this.tags.blackcomputer?'program':'human') +'"]\n';
@@ -1183,8 +1188,10 @@ process.argv.forEach(function(arg) {
     else if(/arena/.exec(arg)) parser = parsearena;//function(buffer) { return buffer; };
     else if(/crosstable/.exec(arg)) crosstable = true;
     else if(/nocomment/.exec(arg)) nocomment = true;
-    else if(s=/white=("?[\w\d.,-_() +&]+"?)/.exec(arg)) whitename = s[1];  // the value of white option will override the value of White tag in pgn
-    else if(s=/black=("?[\w\d.,-_() +&]+"?)/.exec(arg)) blackname = s[1];  // the value of black option will override the value of Black tag in pgn
+    else if(s=/white=['"]?([\w\d.,-_() +&]+)['"]?/.exec(arg)) whitename = s[1];  // the value of white option will override the value of White tag in pgn
+    else if(s=/black=['"]?([\w\d.,-_() +&]+)['"]?/.exec(arg)) blackname = s[1];  // the value of black option will override the value of Black tag in pgn
+    else if(s=/site=['"]?([^'"]+)['"]?/.exec(arg)) site = s[1];
+    else if(s=/event=['"]?([^'"]+)['"]?/.exec(arg)) event = s[1];
 });
 
 function fillResults() {  
