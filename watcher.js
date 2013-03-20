@@ -235,13 +235,13 @@ function ConvertToStream(source, parser) {
     this._wait = false;
     this._buf = new Buffer(parser(source));
     
-    process.nextTick(function() {
+    setImmediate(function() {
         if(that.readable) {
             if(!that._wait && that.readable && that._buf) {
                 if(that.encoding) that.emit('data', that._buf.toString(that.encoding));
                 else that.emit('data', that._buf);
                 that.emit('end');
-            } else process.nextTick(arguments.callee);
+            } else setImmediate(arguments.callee);
         }
     });
     
@@ -1380,7 +1380,7 @@ process.on('quit',function() {
                     console.log(errftp);
                     //throw errftp;
                 }
-                process.nextTick(function() {
+                setImmediate(function() {
                     fs.writeFileSync('Evento.pgn',cumulative_games.join('\n'));
                     var stream_pgn = fs.createReadStream('Evento.pgn');
                     //var stream_pgn = new ConvertToStream(cumulative_games.join('\n'));
@@ -1391,7 +1391,7 @@ process.on('quit',function() {
                             //throw errftp1;
                             console.log(errftp1);
                         }
-                        process.nextTick(function() {
+                        setImmediate(function() {
                             var stream_pgn1 = fs.createReadStream('Evento.pgn');
                             //var stream_pgn = new ConvertToStream(cumulative_games.join('\n'));
                             stream_pgn1.setEncoding('utf8');
@@ -1402,7 +1402,7 @@ process.on('quit',function() {
                                     console.log(errftp1);
                                 }
                             
-                                process.nextTick(function() {conn.end();});
+                                setImmediate(function() {conn.end();});
                             });
                         });
                     });
