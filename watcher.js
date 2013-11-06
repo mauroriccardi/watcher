@@ -132,6 +132,27 @@ Game.prototype.toString =
 		res += '[WhiteType "'+ (this.tags.whitecomputer?'program':'human') +'"]\n';
 		res += '[BlackType "'+ (this.tags.blackcomputer?'program':'human') +'"]\n';
 		res += '[TimeControl "'+(this.tags.timecontrol?((this.tags.timecontrol.mps>0?this.tags.timecontrol.mps+'/':'')+this.tags.timecontrol.basetime+'+'+this.tags.timecontrol.inc):'?')+'"]\n';
+        if(this.tags.white && dbengines) {
+            for(var i=0;i<dbengines.length && this.tags.white.match(RegExp(dbengines[i].engine,"i"))===null;i++); // quick and dirty: I will change this to binary search at least
+            var r = dbengines[i];
+            
+            res += '[WhiteAuthor "'+r.author+'"]\n';
+            res += '[WhiteBook "'+r.book+'"]\n';
+            res += '[WhiteTablebase "'+r.tbase+'"]\n';
+            res += '[WhiteCores "'+r.ncores+'"]\n';
+            res += '[WhiteBit "'+r.bitness+'"]\n';
+        }
+        if(this.tags.black && dbengines) {
+            for(var i=0;i<dbengines.length && this.tags.black.match(RegExp(dbengines[i].engine,"i"))===null;i++); // quick and dirty: I will change this to binary search at least
+            var r = dbengines[i];
+            
+            res += '[BlackAuthor "'+r.author+'"]\n';
+            res += '[BlackBook "'+r.book+'"]\n';
+            res += '[BlackTablebase "'+r.tbase+'"]\n';
+            res += '[BlackCores "'+r.ncores+'"]\n';
+            res += '[BlackBit "'+r.bitness+'"]\n';
+        
+        }
 		res += '\n';
         //res += this.moves;
         //res += '\n';
@@ -504,7 +525,7 @@ function parsexboard(buffer) {
                 lastwasengine = null;
                 firstcolour = 1;
                 continue;
-            } else if(m[4].match(/analyze/)) {
+            } else if(m[4].match(/^analyze/)) {
 				analysis = true;
 				continue;
 			} else if(m[4].match(/exit/)) {
@@ -1177,6 +1198,8 @@ function parseservermoves(buffer) {
 
 var conn = null;
 
+var csv = null;
+
 //parser = parseservermoves;
 parser = parsexboard;
 
@@ -1192,6 +1215,7 @@ process.argv.forEach(function(arg) {
     else if(s=/black=['"]?([\w\d.,-_() +&]+)['"]?/.exec(arg)) blackname = s[1];  // the value of black option will override the value of Black tag in pgn
     else if(s=/site=['"]?([^'"]+)['"]?/.exec(arg)) site = s[1];
     else if(s=/event=['"]?([^'"]+)['"]?/.exec(arg)) event = s[1];
+    else if(s=/csv=['"]?([^'"]+)['"]?/.exec(arg)) csv = s[1];
 });
 
 function fillResults() {  
@@ -1418,6 +1442,35 @@ process.on('quit',function() {
     }
 });
 
+if(csv) {
+    var buf = fs.readFileSync(csv,'utf8');
+    var row;
+    var record;
+    var csvrowre = /([^\r\n]*)+\r?\n/g;
+    var csvrecordre = /([^,]*),/g;
+    var tmpdbengines = [[],[],[],[],[],[]];
+    var dbengines = [];
+    var cn = 0;
+    
+    while(row = csvrowre.exec(buf)) { // engine names
+        while(record = csvrecordre.exec(row[1]))
+            tmpdbengines[cn].push(record[1]);
+        cn++;
+    }
+    console.log('\nRead '+tmpdbengines[0].length+' lines from db file '+csv+'\n');
+    for(cn=0;cn<tmpdbengines[0].length;cn++) {
+        dbengines.push({
+                        engine: tmpdbengines[0][cn],
+                        author: tmpdbengines[1][cn] || '?',
+                        book: tmpdbengines[2][cn] || 'no',
+                        tbase: tmpdbengines[3][cn] || 'no',
+                        ncores: tmpdbengines[4][cn] || '1',
+                        bitness: tmpdbengines[5][cn] || '?',
+                     });
+    }
+    delete tmpdbengines;
+}
+
 if(debug) {
     interval = setInterval(function() {
         var buf;
@@ -1499,8 +1552,8 @@ if(debug) {
     conn.connect();
 };
 
-console.log('Hit Ctrl-C to exit.');
-console.log('Exiting by any other means will not trigger the\nproper upload of relevant files on the server.');
+console.log('Hit Ctrl-C to exit when you are done.');
+console.log('Exiting by any other means will not trigger the\nproper upload of relevant files to the server.');
 
 keypress(process.stdin);   // newer versions of node.js require this: the old trick stopped working
 
