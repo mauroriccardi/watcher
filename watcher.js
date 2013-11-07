@@ -1319,8 +1319,8 @@ function fillResults() {
         }
         res += '----------------------------------------------------------------------\n';
     }
-    
-    res = '<head><meta http-Equiv="Cache-Control" Content="no-cache"><meta http-Equiv="Pragma" Content="no-cache"><meta http-Equiv="Expires" Content="0"></head><pre>'+res+'</pre>';
+     
+    res = '<head><meta http-Equiv="Cache-Control" Content="no-cache"><meta http-Equiv="Pragma" Content="no-cache"><meta http-Equiv="Expires" Content="0"></head><form><input type=button value="Refresh" onClick="history.go()"></form><pre>'+res+'</pre>';
     
     return(res);
 };
