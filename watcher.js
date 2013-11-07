@@ -322,6 +322,7 @@ delay = parsedopts.delay || 1;
 hostname = parsedopts.hostname || '127.0.0.1';
 
 function strtime(time) {
+    if(isNaN(time)) return('00:00:00');
 	time = time/1000;
     var s = (time % 60).toFixed(2);
     time = Math.floor(time/60);
@@ -889,7 +890,10 @@ function parsexboard(buffer) {
 				} else if('pv' in dummyPV) {
 					game.moves += ' { [%emt '+strtime(time)+'][%clk '+ strtime(dummyclk) +'] } ('+ (dummyPV.pv || '') + ') ';
 					dummymove += ' { [%emt '+strtime(time)+'][%clk '+ strtime(dummyclk) +'] } ('+ (dummyPV.pv || '') + ') ';
-				}
+				} else {
+                    game.moves += ' { [%clk '+ strtime(dummyclk) +'] } ';
+					dummymove += ' { [%clk '+ strtime(dummyclk) +'] } ';
+                }
 			} else if(analysis) {
 				for(var k in currentPV) {
 					dummyPV = currentPV[k];
