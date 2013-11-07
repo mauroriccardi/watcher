@@ -40,6 +40,7 @@ var username;
 var password;
 var filename;
 var remotefilename;
+var crosstablefilename = 'EventoT.html';
 var crosstable = false;
 var nocomment = false;
 var showratings = true;
@@ -135,23 +136,24 @@ Game.prototype.toString =
         if(this.tags.white && dbengines) {
             for(var i=0;i<dbengines.length && this.tags.white.match(RegExp(dbengines[i].engine,"i"))===null;i++); // quick and dirty: I will change this to binary search at least
             var r = dbengines[i];
-            
-            res += '[WhiteAuthor "'+r.author+'"]\n';
-            res += '[WhiteBook "'+r.book+'"]\n';
-            res += '[WhiteTablebase "'+r.tbase+'"]\n';
-            res += '[WhiteCores "'+r.ncores+'"]\n';
-            res += '[WhiteBit "'+r.bitness+'"]\n';
+            if(r) {
+                res += '[WhiteAuthor "'+r.author+'"]\n';
+                res += '[WhiteBook "'+r.book+'"]\n';
+                res += '[WhiteTablebase "'+r.tbase+'"]\n';
+                res += '[WhiteCores "'+r.ncores+'"]\n';
+                res += '[WhiteBit "'+r.bitness+'"]\n';
+            }
         }
         if(this.tags.black && dbengines) {
             for(var i=0;i<dbengines.length && this.tags.black.match(RegExp(dbengines[i].engine,"i"))===null;i++); // quick and dirty: I will change this to binary search at least
             var r = dbengines[i];
-            
-            res += '[BlackAuthor "'+r.author+'"]\n';
-            res += '[BlackBook "'+r.book+'"]\n';
-            res += '[BlackTablebase "'+r.tbase+'"]\n';
-            res += '[BlackCores "'+r.ncores+'"]\n';
-            res += '[BlackBit "'+r.bitness+'"]\n';
-        
+            if(r) {
+                res += '[BlackAuthor "'+r.author+'"]\n';
+                res += '[BlackBook "'+r.book+'"]\n';
+                res += '[BlackTablebase "'+r.tbase+'"]\n';
+                res += '[BlackCores "'+r.ncores+'"]\n';
+                res += '[BlackBit "'+r.bitness+'"]\n';
+            }
         }
 		res += '\n';
         //res += this.moves;
@@ -1317,6 +1319,9 @@ function fillResults() {
         }
         res += '----------------------------------------------------------------------\n';
     }
+    
+    res = '<head><meta http-Equiv="Cache-Control" Content="no-cache"><meta http-Equiv="Pragma" Content="no-cache"><meta http-Equiv="Expires" Content="0"></head><pre>'+res+'</pre>';
+    
     return(res);
 };
 
@@ -1339,18 +1344,18 @@ process.on('gameover',function() {
 
     if(debug) {
         try {
-            fs.writeFileSync('EventoT.txt',res);
+            fs.writeFileSync(crosstablefilename,res);
             fs.writeFileSync('Evento.pgn',cumulative_games.join('\n'));
         } catch(e) {
             console.log(e);
         }
     } else if(conn) {
         try {
-            ftpStack.push({data: res, rfile: 'EventoT.txt', prompt: '_', errmsg: 'error sending table'});
+            ftpStack.push({data: res, rfile: crosstablefilename, prompt: '_', errmsg: 'error sending table'});
             ftpStack.push({data: cumulative_games.join('\n'), rfile: 'Evento.pgn', prompt: ',', errmsg: 'error sending games'});
             // var stream_table = new ConvertToStream(res);
             // stream_table.setEncoding('utf8');
-            // conn.put(stream_table,'EventoT.txt',function(errftp) {
+            // conn.put(stream_table,crosstablefilename,function(errftp) {
                 // if(errftp) {
                     // console.log('error sending table');
                     // console.log(errftp);
@@ -1390,7 +1395,7 @@ process.on('quit',function() {
 
     if(debug) {
         try {
-            fs.writeFileSync('EventoT.txt',res);
+            fs.writeFileSync(crosstablefilename,res);
             fs.writeFileSync('Evento.pgn',cumulative_games.join('\n'));
         } catch(e) {
             console.log(e);
@@ -1398,11 +1403,11 @@ process.on('quit',function() {
         process.exit();
     } else if(conn) {
         try {
-            fs.writeFileSync('EventoT.txt',res);
-            var stream_table = fs.createReadStream('EventoT.txt');
+            fs.writeFileSync(crosstablefilename,res);
+            var stream_table = fs.createReadStream(crosstablefilename);
             //var stream_table = new ConvertToStream(res);
             stream_table.setEncoding('utf8');
-            conn.put(stream_table,'EventoT.txt',function(errftp) {
+            conn.put(stream_table,crosstablefilename,function(errftp) {
                 if(errftp) {
                     console.log('error sending table on quit');
                     console.log(errftp);
@@ -1541,7 +1546,7 @@ if(debug) {
                     if(!(ftpStack.length>0) && (Date.now() - last_trans_time > max_trans_time)) {  
                         // queue a dummy transition (just the crosstable file) to reset the ftp timeout
                         var res = fillResults();
-                        ftpStack.push({data: res, rfile: 'EventoT.txt', prompt: '|', errmsg: 'error sending table'});
+                        ftpStack.push({data: res, rfile: crosstablefilename, prompt: '|', errmsg: 'error sending table'});
                     }
                     
                     var arr = ftpStack.shift();
