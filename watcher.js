@@ -121,6 +121,8 @@ Game.prototype.toString =
         res += '[Site "'+(site || '?')+'"]\n';
         res += '[Date "'+pgn_date(new Date())+'"]\n';
         res += '[Round "'+(this.tags.round || '-')+'"]\n';
+        this.tags.white = whitename || this.tags.white;
+        this.tags.black = blackname || this.tags.black;
         if(whitename==null) res += '[White "'+(this.tags.white || '?')+'"]\n';
         else res += '[White "'+whitename+'"]\n';
         if(blackname==null) res += '[Black "'+(this.tags.black || '?')+'"]\n';
@@ -218,7 +220,7 @@ Game.prototype.firstiswhite =
         
         this.tags.whiteelo = this.firstelo;
         this.tags.blackelo = this.secondelo;
-        this.tags.whitecomputer = this.firstiscomputer || false;
+        this.tags.whitecomputer = true;//this.firstiscomputer || false;
         this.tags.blackcomputer = this.secondiscomputer || false;
     };
 Game.prototype.firstisblack =
@@ -229,7 +231,7 @@ Game.prototype.firstisblack =
         
         this.tags.blackelo = this.firstelo;
         this.tags.whiteelo = this.secondelo;        
-        this.tags.blackcomputer = this.firstiscomputer || false;
+        this.tags.blackcomputer = true;//this.firstiscomputer || false;
         this.tags.whitecomputer = this.secondiscomputer || false;        
     };    
 Game.prototype.firstrating =
